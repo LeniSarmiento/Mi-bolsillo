@@ -1,3 +1,5 @@
+import '../../../app/providers.dart';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,7 +15,7 @@ import 'package:mi_bolsillo/features/income/application/income_controller.dart';
 import 'package:mi_bolsillo/features/profile/application/settings_controller.dart';
 import 'package:mi_bolsillo/features/transactions/application/transactions_controller.dart';
 
-/// Screen 12: Perfil y configuración (ThemeMode claro/oscuro, alertas y reinicio de datos simulados).
+/// Screen 12: Perfil y configuración (ThemeMode claro/oscuro, alertas y borrado de datos locales).
 class ProfileScreen extends ConsumerWidget {
   const ProfileScreen({super.key});
 
@@ -66,7 +68,7 @@ class ProfileScreen extends ConsumerWidget {
                                   style: theme.textTheme.titleLarge,
                                 ),
                                 Text(
-                                  '100% Local · Datos simulados · v1.0.0',
+                                  'Datos en este dispositivo · v1.0.0',
                                   style: theme.textTheme.bodyMedium,
                                 ),
                               ],
@@ -124,7 +126,7 @@ class ProfileScreen extends ConsumerWidget {
                           leading: const Icon(Icons.bolt_rounded),
                           title: const Text('Detección automática'),
                           subtitle: Text(
-                            autoDetectEnabled ? 'Activa (simulada)' : 'Pausada',
+                            autoDetectEnabled ? 'Activa' : 'Pausada',
                           ),
                           trailing: const Icon(Icons.chevron_right_rounded),
                           onTap: () => context.push(AppRoutes.autoDetection),
@@ -185,38 +187,8 @@ class ProfileScreen extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: AppSpacing.lg),
-                  Text(
-                    'Control de Datos Simulados',
-                    style: theme.textTheme.titleMedium,
-                  ),
+                  Text('Datos locales', style: theme.textTheme.titleMedium),
                   const SizedBox(height: AppSpacing.xs),
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      await ref
-                          .read(settingsControllerProvider.notifier)
-                          .resetDefaults();
-                      await ref
-                          .read(transactionsControllerProvider.notifier)
-                          .resetDefaults();
-                      await ref
-                          .read(incomeControllerProvider.notifier)
-                          .resetDefaults();
-                      await ref
-                          .read(budgetsControllerProvider.notifier)
-                          .resetDefaults();
-                      await ref
-                          .read(automaticDetectionControllerProvider.notifier)
-                          .resetDefaults();
-                      if (!context.mounted) return;
-                      AppSnackbar.showSuccess(
-                        context,
-                        'Datos simulados restaurados a valores iniciales',
-                      );
-                    },
-                    icon: const Icon(Icons.restore_rounded),
-                    label: const Text('Restaurar datos simulados'),
-                  ),
-                  const SizedBox(height: AppSpacing.sm),
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: semantic.expense,
@@ -226,24 +198,40 @@ class ProfileScreen extends ConsumerWidget {
                       final ok = await ConfirmDeleteDialog.show(
                         context,
                         title: '¿Borrar datos locales y vaciar listas?',
-                        description: 'Se vaciarán los movimientos e ingresos adicionales simulados en memoria para probar los estados vacíos.',
+                        description: 'Se eliminarán los movimientos, presupuestos y ajustes de este dispositivo. Esta acción es permanente.',
                         confirmLabel: 'Borrar todo',
                       );
                       if (!ok || !context.mounted) return;
-                      await ref
-                          .read(transactionsControllerProvider.notifier)
-                          .clearAll();
-                      await ref
-                          .read(incomeControllerProvider.notifier)
-                          .clearAll();
+                      final db = ref.read(databaseProvider);
+                      final bridge = ref.read(bridgeProvider);
+                      try {
+                        await db.transaction(() async {
+                          await bridge.erase();
+                          await db.erase();
+                        });
+                      } catch (_) {
+                        if (context.mounted) {
+                          AppSnackbar.showError(
+                            context,
+                            'No se pudieron borrar los datos',
+                          );
+                        }
+                        return;
+                      }
+                      if (!context.mounted) return;
+                      ref.invalidate(incomeControllerProvider);
+                      ref.invalidate(transactionsControllerProvider);
+                      ref.invalidate(automaticDetectionControllerProvider);
+                      ref.invalidate(settingsControllerProvider);
+                      ref.invalidate(budgetsControllerProvider);
                       if (!context.mounted) return;
                       AppSnackbar.showSuccess(
                         context,
-                        'Datos locales simulados borrados',
+                        'Datos locales borrados',
                       );
                     },
                     icon: const Icon(Icons.delete_forever_outlined),
-                    label: const Text('Borrar datos locales y probar vacíos'),
+                    label: const Text('Borrar datos locales'),
                   ),
                 ],
               ),

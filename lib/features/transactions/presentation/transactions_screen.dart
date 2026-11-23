@@ -1,3 +1,5 @@
+import '../../../core/formatting/exports.dart';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -72,6 +74,14 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       }
     }
     if (tx.type == TransactionType.baseIncome) {
+      final now = DateTime.now();
+      if (tx.date.year != now.year || tx.date.month != now.month) {
+        AppSnackbar.showError(
+          context,
+          'El ingreso base de este mes ya está cerrado',
+        );
+        return;
+      }
       await context.push(AppRoutes.onboardingIncome);
       return;
     }
@@ -117,13 +127,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         title: const Text('Movimientos'),
         actions: [
           IconButton(
-            tooltip: 'Exportar extracto simulado',
-            onPressed: () {
-              AppSnackbar.showSuccess(
-                context,
-                'Extracto mensual preparado en memoria (${allItems.length} registros)',
-              );
-            },
+            tooltip: 'Exportar movimientos a CSV',
+            onPressed: () => exportLedger(context, filtered),
             icon: const Icon(Icons.file_download_outlined),
           ),
         ],

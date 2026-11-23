@@ -35,6 +35,23 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
   late bool _isRecurring;
   late RecurrenceFrequency _recurrenceFrequency;
   String? _formError;
+  bool _saving = false;
+  Future<void> _saveOnce() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await _saveIncome();
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _formError =
+              'No se pudo guardar. Revisa los datos e inténtalo nuevamente.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   bool get _isEditing => widget.existingIncome != null;
 
@@ -354,7 +371,7 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
                     ),
                     const SizedBox(height: AppSpacing.xl),
                     FilledButton.icon(
-                      onPressed: _saveIncome,
+                      onPressed: _saving ? null : _saveOnce,
                       icon: const Icon(Icons.save_rounded),
                       label: const Text('Guardar ingreso'),
                     ),

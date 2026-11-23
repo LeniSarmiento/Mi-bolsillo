@@ -1,7 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mi_bolsillo/features/income/application/income_controller.dart';
-import 'package:mi_bolsillo/features/profile/application/settings_controller.dart';
 import 'package:mi_bolsillo/features/transactions/application/transactions_controller.dart';
 import 'package:mi_bolsillo/features/transactions/domain/transaction_item.dart';
 
@@ -28,16 +26,26 @@ class DashboardSummary {
 }
 
 final dashboardSummaryProvider = Provider<DashboardSummary>((ref) {
-  final settings = ref.watch(settingsControllerProvider);
-  final incomeState = ref.watch(incomeControllerProvider);
-  final txState = ref.watch(transactionsControllerProvider);
+  return summarizeMonth(ref.watch(combinedMovementsProvider), DateTime.now());
+});
 
-  final monthlyIncomeCop = settings.monthlyIncomeCop;
-  final additionalIncomeCop = incomeState.totalCop;
-  final expensesCop = txState.items
-      .where((tx) => tx.type == TransactionType.expense)
-      .fold<int>(0, (sum, tx) => sum + tx.amountCop);
-
+DashboardSummary summarizeMonth(
+  Iterable<TransactionItem> entries,
+  DateTime today,
+) {
+  final end = DateTime(today.year, today.month, today.day + 1);
+  final start = DateTime(today.year, today.month);
+  final current = entries.where(
+    (t) =>
+        t.status == MovementStatus.confirmed &&
+        !t.date.isBefore(start) &&
+        t.date.isBefore(end),
+  );
+  int total(TransactionType type) =>
+      current.where((t) => t.type == type).fold(0, (s, t) => s + t.amountCop);
+  final monthlyIncomeCop = total(TransactionType.baseIncome);
+  final additionalIncomeCop = total(TransactionType.additionalIncome);
+  final expensesCop = total(TransactionType.expense);
   final availableCop = monthlyIncomeCop + additionalIncomeCop - expensesCop;
   final totalIncomeCop = monthlyIncomeCop + additionalIncomeCop;
   final committedPercent = totalIncomeCop <= 0
@@ -51,4 +59,4 @@ final dashboardSummaryProvider = Provider<DashboardSummary>((ref) {
     availableCop: availableCop,
     committedPercent: committedPercent,
   );
-});
+}

@@ -25,6 +25,23 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
   PayFrequency _payFrequency = PayFrequency.biweekly;
   bool _autoRepeat = true;
   String? _formError;
+  bool _saving = false;
+  Future<void> _saveOnce() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await _submit();
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _formError =
+              'No se pudo guardar. Revisa los datos e inténtalo nuevamente.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   @override
   void initState() {
@@ -218,7 +235,7 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
                     ),
                     const SizedBox(height: AppSpacing.xl),
                     FilledButton.icon(
-                      onPressed: _submit,
+                      onPressed: _saving ? null : _saveOnce,
                       icon: const Icon(Icons.check_rounded),
                       label: const Text('Crear mi presupuesto'),
                     ),

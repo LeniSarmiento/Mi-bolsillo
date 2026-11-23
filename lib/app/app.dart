@@ -1,3 +1,11 @@
+import 'dart:async';
+
+import '../data/local_detection.dart';
+import '../features/income/application/income_controller.dart';
+import '../features/transactions/application/transactions_controller.dart';
+import '../features/automatic_detection/application/automatic_detection_controller.dart';
+import 'providers.dart';
+
 import 'package:cupertino_ui/cupertino_ui.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'
     show GlobalWidgetsLocalizations;
@@ -19,13 +27,55 @@ class MiBolsilloApp extends ConsumerStatefulWidget {
   ConsumerState<MiBolsilloApp> createState() => _MiBolsilloAppState();
 }
 
-class _MiBolsilloAppState extends ConsumerState<MiBolsilloApp> {
+class _MiBolsilloAppState extends ConsumerState<MiBolsilloApp>
+    with WidgetsBindingObserver {
+  Timer? _midnight;
+  late final bool _hasBridge = ref.read(bridgeProvider).supported;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (_hasBridge) {
+      NotificationBridge.channel.setMethodCallHandler((call) async {
+        if (call.method == 'arrival' && mounted) {
+          await ref.read(automaticDetectionControllerProvider.notifier).load();
+        }
+      });
+    }
+    _scheduleMidnight();
+  }
+
+  void _scheduleMidnight() {
+    _midnight?.cancel();
+    final now = DateTime.now();
+    _midnight = Timer(
+      DateTime(now.year, now.month, now.day + 1).difference(now),
+      _refresh,
+    );
+  }
+
+  void _refresh() {
+    if (!mounted) return;
+    _scheduleMidnight();
+    ref.invalidate(transactionsControllerProvider);
+    ref.invalidate(incomeControllerProvider);
+    ref.invalidate(automaticDetectionControllerProvider);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _refresh();
+  }
+
   late final GoRouter _router = createAppRouter(
     initialLocation: widget.initialLocation,
   );
 
   @override
   void dispose() {
+    _midnight?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    if (_hasBridge) NotificationBridge.channel.setMethodCallHandler(null);
     _router.dispose();
     super.dispose();
   }

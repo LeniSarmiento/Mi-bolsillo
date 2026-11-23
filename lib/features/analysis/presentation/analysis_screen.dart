@@ -7,7 +7,9 @@ import 'package:mi_bolsillo/core/formatting/cop_formatter.dart';
 import 'package:mi_bolsillo/core/routing/app_routes.dart';
 import 'package:mi_bolsillo/core/theme/app_colors.dart';
 import 'package:mi_bolsillo/core/theme/app_spacing.dart';
-import 'package:mi_bolsillo/core/widgets/app_snackbar.dart';
+
+import '../../../core/formatting/exports.dart';
+
 import 'package:mi_bolsillo/core/widgets/state_feedback_views.dart';
 import 'package:mi_bolsillo/features/analysis/application/analysis_provider.dart';
 
@@ -281,12 +283,8 @@ class _AnalysisScreenState extends ConsumerState<AnalysisScreen> {
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     OutlinedButton.icon(
-                      onPressed: () {
-                        AppSnackbar.showSuccess(
-                          context,
-                          'Resumen ${_period.label.toLowerCase()} generado (simulación local)',
-                        );
-                      },
+                      onPressed: () =>
+                          exportReport(context, report, _period.label),
                       icon: const Icon(Icons.picture_as_pdf_outlined),
                       label: const Text('Exportar resumen a PDF'),
                     ),

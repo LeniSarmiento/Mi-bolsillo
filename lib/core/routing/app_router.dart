@@ -1,3 +1,5 @@
+import '../../features/budgets/domain/budget_item.dart';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mi_bolsillo/core/routing/app_routes.dart';
@@ -101,7 +103,8 @@ GoRouter createAppRouter({String initialLocation = AppRoutes.welcome}) {
       ),
       GoRoute(
         path: AppRoutes.createBudget,
-        builder: (context, state) => const CreateBudgetScreen(),
+        builder: (context, state) =>
+            CreateBudgetScreen(existing: state.extra as BudgetItem?),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

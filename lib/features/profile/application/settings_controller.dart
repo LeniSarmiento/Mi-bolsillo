@@ -1,3 +1,6 @@
+import '../../../data/local_repositories.dart';
+import '../../transactions/application/transactions_controller.dart';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_bolsillo/app/providers.dart';
@@ -26,12 +29,17 @@ class SettingsController extends Notifier<UserSettings> {
       autoRepeatBaseIncome: autoRepeatBaseIncome,
       onboardingCompleted: true,
     );
-    state = await ref.read(settingsRepositoryProvider).updateSettings(updated);
+    final repo = ref.read(settingsRepositoryProvider);
+    state = repo is LocalSettings
+        ? await repo.configureIncome(updated)
+        : await repo.updateSettings(updated);
+    await ref.read(transactionsControllerProvider.notifier).loadTransactions();
   }
 
   Future<void> updateMonthlyIncome(int monthlyIncomeCop) async {
     final updated = state.copyWith(monthlyIncomeCop: monthlyIncomeCop);
     state = await ref.read(settingsRepositoryProvider).updateSettings(updated);
+    await ref.read(transactionsControllerProvider.notifier).loadTransactions();
   }
 
   Future<void> toggleThemeMode(bool isDark) async {

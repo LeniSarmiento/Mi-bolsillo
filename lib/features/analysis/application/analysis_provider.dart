@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mi_bolsillo/features/dashboard/application/dashboard_summary_provider.dart';
 import 'package:mi_bolsillo/features/transactions/application/transactions_controller.dart';
 import 'package:mi_bolsillo/features/transactions/domain/transaction_item.dart';
 
@@ -51,24 +50,26 @@ final analysisReportProvider = Provider.family<AnalysisReport, AnalysisPeriod>((
   ref,
   period,
 ) {
-  final summary = ref.watch(dashboardSummaryProvider);
-  final txItems = ref.watch(transactionsControllerProvider).items;
-
-  final multiplier = switch (period) {
-    AnalysisPeriod.weekly => 1,
-    AnalysisPeriod.monthly => 1,
-    AnalysisPeriod.annual => 12,
+  final now = DateTime.now();
+  final start = switch (period) {
+    AnalysisPeriod.weekly => DateTime(
+      now.year,
+      now.month,
+      now.day - now.weekday + 1,
+    ),
+    AnalysisPeriod.monthly => DateTime(now.year, now.month),
+    AnalysisPeriod.annual => DateTime(now.year),
   };
-  final divisor = switch (period) {
-    AnalysisPeriod.weekly => 4,
-    AnalysisPeriod.monthly => 1,
-    AnalysisPeriod.annual => 1,
-  };
-
-  int scale(int value) => (value * multiplier) ~/ divisor;
-
-  final totalIncome = scale(summary.totalIncomeCop);
-  final totalExpenses = scale(summary.expensesCop);
+  final end = DateTime(now.year, now.month, now.day + 1);
+  final txItems = ref
+      .watch(combinedMovementsProvider)
+      .where((m) => !m.date.isBefore(start) && m.date.isBefore(end));
+  final totalIncome = txItems
+      .where((m) => m.isIncome)
+      .fold<int>(0, (s, m) => s + m.amountCop);
+  final totalExpenses = txItems
+      .where((m) => !m.isIncome)
+      .fold<int>(0, (s, m) => s + m.amountCop);
   final saved = totalIncome - totalExpenses;
   final freePercent = totalIncome <= 0
       ? 0
@@ -78,7 +79,7 @@ final analysisReportProvider = Provider.family<AnalysisReport, AnalysisPeriod>((
   for (final tx in txItems) {
     if (tx.type == TransactionType.expense) {
       byCategory[tx.categoryOrOrigin] =
-          (byCategory[tx.categoryOrOrigin] ?? 0) + scale(tx.amountCop);
+          (byCategory[tx.categoryOrOrigin] ?? 0) + tx.amountCop;
     }
   }
 
@@ -93,11 +94,11 @@ final analysisReportProvider = Provider.family<AnalysisReport, AnalysisPeriod>((
     );
   }).toList()..sort((a, b) => b.amountCop.compareTo(a.amountCop));
 
-  final days = switch (period) {
-    AnalysisPeriod.weekly => 7,
-    AnalysisPeriod.monthly => 30,
-    AnalysisPeriod.annual => 365,
-  };
+  final days = DateTime.utc(
+    end.year,
+    end.month,
+    end.day,
+  ).difference(DateTime.utc(start.year, start.month, start.day)).inDays;
 
   return AnalysisReport(
     totalIncomeCop: totalIncome,

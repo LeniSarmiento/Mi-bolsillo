@@ -23,14 +23,14 @@ class BudgetsScreen extends ConsumerWidget {
     final budgetsState = ref.watch(budgetsControllerProvider);
     final progressList = ref.watch(budgetProgressListProvider);
 
-    final totalLimit = progressList.fold<int>(
+    final monthly = progressList.where(
+      (p) => p.budget.period == BudgetPeriod.monthly,
+    );
+    final totalLimit = monthly.fold<int>(
       0,
       (sum, item) => sum + item.budget.limitCop,
     );
-    final totalSpent = progressList.fold<int>(
-      0,
-      (sum, item) => sum + item.spentCop,
-    );
+    final totalSpent = monthly.fold<int>(0, (sum, item) => sum + item.spentCop);
     final totalRemaining = totalLimit - totalSpent;
     final totalPercent = totalLimit <= 0
         ? 0
@@ -266,6 +266,14 @@ class _BudgetCategoryCard extends StatelessWidget {
                             : FontWeight.w400,
                       ),
                     ),
+                  ),
+                  IconButton(
+                    onPressed: () => context.push(
+                      AppRoutes.createBudget,
+                      extra: progress.budget,
+                    ),
+                    tooltip: 'Editar presupuesto',
+                    icon: const Icon(Icons.edit_outlined),
                   ),
                   IconButton(
                     tooltip: 'Eliminar presupuesto',

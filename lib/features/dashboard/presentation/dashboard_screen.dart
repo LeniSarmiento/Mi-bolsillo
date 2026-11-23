@@ -36,8 +36,17 @@ class DashboardScreen extends ConsumerWidget {
 
     final isInitialLoading = txState.isLoading || incomeState.isLoading;
     final recentMovements = combined.take(4).toList();
+    final now = DateTime.now();
+    final remainingDays =
+        DateTime(now.year, now.month + 1, 0).day - now.day + 1;
+    final currentIncomes = incomeState.items.where(
+      (i) =>
+          i.date.year == now.year &&
+          i.date.month == now.month &&
+          i.date.day <= now.day,
+    );
     final dailyPaceCop = summary.availableCop > 0
-        ? summary.availableCop ~/ 12
+        ? summary.availableCop ~/ remainingDays
         : 0;
 
     return Scaffold(
@@ -99,6 +108,7 @@ class DashboardScreen extends ConsumerWidget {
                           firstName: settings.firstName,
                           isNegative: summary.isNegative,
                           dailyPaceCop: dailyPaceCop,
+                          remainingDays: remainingDays,
                         ),
                         if (settings.autoDetectionBannerVisible) ...[
                           const SizedBox(height: AppSpacing.md),
@@ -164,7 +174,7 @@ class DashboardScreen extends ConsumerWidget {
                           ],
                         ),
                         const SizedBox(height: AppSpacing.xs),
-                        if (incomeState.items.isEmpty)
+                        if (currentIncomes.isEmpty)
                           EmptyStateView(
                             icon: Icons.savings_outlined,
                             title: 'Sin ingresos adicionales',
@@ -174,7 +184,7 @@ class DashboardScreen extends ConsumerWidget {
                                 context.push(AppRoutes.registerIncome),
                           )
                         else
-                          ...incomeState.items.map(
+                          ...currentIncomes.map(
                             (income) => Padding(
                               padding: const EdgeInsets.only(
                                 bottom: AppSpacing.sm,
@@ -375,11 +385,13 @@ class _GreetingHeader extends StatelessWidget {
     required this.firstName,
     required this.isNegative,
     required this.dailyPaceCop,
+    required this.remainingDays,
   });
 
   final String firstName;
   final bool isNegative;
   final int dailyPaceCop;
+  final int remainingDays;
 
   @override
   Widget build(BuildContext context) {
@@ -391,12 +403,15 @@ class _GreetingHeader extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('¡Hola, $firstName!', style: theme.textTheme.headlineSmall),
+              Text(
+                firstName == 'Mi' ? '¡Hola!' : '¡Hola, $firstName!',
+                style: theme.textTheme.headlineSmall,
+              ),
               const SizedBox(height: 2),
               Text(
                 isNegative
                     ? 'Atención · Disponible en déficit'
-                    : '12 días restantes · ~${CopFormatter.format(dailyPaceCop)} / día',
+                    : '$remainingDays días restantes · ~${CopFormatter.format(dailyPaceCop)} / día',
                 style: theme.textTheme.bodyMedium,
               ),
             ],
@@ -477,7 +492,7 @@ class _AutoDetectionBanner extends StatelessWidget {
                     Text(
                       pendingCount > 0
                           ? 'Tienes $pendingCount movimientos detectados por revisar.'
-                          : 'Detecta compras de Bancolombia, Nequi y Daviplata.',
+                          : 'En Android puedes revisar posibles compras de tus apps financieras.',
                       style: theme.textTheme.bodyMedium,
                     ),
                   ],
