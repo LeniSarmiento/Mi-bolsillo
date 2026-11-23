@@ -23,49 +23,87 @@ class PendingMovementsScreen extends ConsumerWidget {
     WidgetRef ref,
     PendingMovement movement,
   ) async {
-    final picked = await showModalBottomSheet<String>(
+    var merchant = movement.merchant;
+    var amount = movement.amountCop;
+    var category = movement.suggestedCategory;
+    final key = GlobalKey<FormState>();
+    final updated = await showModalBottomSheet<PendingMovement>(
       context: context,
+      isScrollControlled: true,
       showDragHandle: true,
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.md),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Confirmar categoría para ${movement.merchant}',
-                  style: Theme.of(sheetContext).textTheme.titleMedium,
-                ),
-                const SizedBox(height: AppSpacing.md),
-                Wrap(
-                  spacing: AppSpacing.xs,
-                  runSpacing: AppSpacing.xs,
-                  children: ExpenseCategory.values.map((cat) {
-                    return ActionChip(
-                      avatar: Icon(cat.icon, size: 18),
-                      label: Text(cat.label),
-                      onPressed: () =>
-                          Navigator.of(sheetContext).pop(cat.label),
-                    );
-                  }).toList(),
-                ),
-              ],
+      builder: (sheet) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          8,
+          16,
+          MediaQuery.viewInsetsOf(sheet).bottom + 16,
+        ),
+        child: SafeArea(
+          child: SingleChildScrollView(
+            child: Form(
+              key: key,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    initialValue: merchant,
+                    decoration: const InputDecoration(labelText: 'Comercio'),
+                    onChanged: (s) => merchant = s.trim(),
+                    validator: (_) =>
+                        merchant.isEmpty ? 'Ingresa el comercio' : null,
+                  ),
+                  TextFormField(
+                    initialValue: CopFormatter.formatDigits(amount),
+                    decoration: const InputDecoration(
+                      labelText: 'Monto en COP',
+                    ),
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [CopFormatter.inputFormatter],
+                    onChanged: (s) => amount = CopFormatter.parseDigits(s) ?? 0,
+                    validator: (_) =>
+                        amount <= 0 ? 'Ingresa un monto válido' : null,
+                  ),
+                  DropdownButtonFormField<String>(
+                    initialValue: category,
+                    items: ExpenseCategory.values
+                        .map(
+                          (c) => DropdownMenuItem(
+                            value: c.label,
+                            child: Text(c.label),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (s) => category = s ?? category,
+                  ),
+                  FilledButton(
+                    onPressed: () {
+                      if (key.currentState!.validate()) {
+                        Navigator.pop(
+                          sheet,
+                          movement.copyWith(
+                            merchant: merchant,
+                            amountCop: amount,
+                            suggestedCategory: category,
+                          ),
+                        );
+                      }
+                    },
+                    child: const Text('Guardar cambios'),
+                  ),
+                ],
+              ),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
-    if (picked == null || !context.mounted) return;
+    if (updated == null || !context.mounted) return;
     await ref
         .read(automaticDetectionControllerProvider.notifier)
-        .confirmOne(movement, category: picked);
-    if (!context.mounted) return;
-    AppSnackbar.showSuccess(
-      context,
-      'Movimiento "${movement.merchant}" confirmado en $picked',
-    );
+        .editPending(updated);
+    if (context.mounted) {
+      AppSnackbar.showSuccess(context, 'Movimiento pendiente actualizado');
+    }
   }
 
   @override
@@ -223,7 +261,7 @@ class PendingMovementsScreen extends ConsumerWidget {
                                           size: 16,
                                         ),
                                         label: Text(
-                                          'Sugerido: ${item.suggestedCategory} (${item.confidencePercent}%)',
+                                          'Categoría: ${item.suggestedCategory}',
                                         ),
                                       ),
                                       const SizedBox(height: AppSpacing.sm),

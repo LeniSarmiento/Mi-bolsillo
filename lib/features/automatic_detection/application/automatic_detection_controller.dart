@@ -1,3 +1,5 @@
+import '../domain/automatic_detection_repository.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_bolsillo/app/providers.dart';
 import 'package:mi_bolsillo/features/automatic_detection/domain/pending_movement.dart';
@@ -6,7 +8,7 @@ import 'package:mi_bolsillo/features/transactions/domain/transaction_item.dart';
 
 class AutomaticDetectionState {
   const AutomaticDetectionState({
-    this.isEnabled = true,
+    this.isEnabled = false,
     this.pending = const [],
     this.isLoading = false,
   });
@@ -51,10 +53,22 @@ class AutomaticDetectionController extends Notifier<AutomaticDetectionState> {
 
   Future<void> setEnabled(bool enabled) async {
     await ref.read(automaticDetectionRepositoryProvider).setEnabled(enabled);
-    state = state.copyWith(isEnabled: enabled);
+    await load();
   }
 
   Future<void> confirmOne(PendingMovement movement, {String? category}) async {
+    final repo = ref.read(automaticDetectionRepositoryProvider);
+    if (repo is PendingReviewRepository) {
+      await (repo as PendingReviewRepository).confirm(
+        movement,
+        category: category,
+      );
+      await ref
+          .read(transactionsControllerProvider.notifier)
+          .loadTransactions();
+      await load();
+      return;
+    }
     await ref
         .read(transactionsControllerProvider.notifier)
         .addExpense(
@@ -75,23 +89,19 @@ class AutomaticDetectionController extends Notifier<AutomaticDetectionState> {
     state = state.copyWith(pending: remaining);
   }
 
+  Future<void> editPending(PendingMovement movement) async {
+    final repo = ref.read(
+      automaticDetectionRepositoryProvider,
+    ) as PendingReviewRepository;
+    await repo.editPending(movement);
+    await load();
+  }
+
   Future<void> confirmAll() async {
     final current = List<PendingMovement>.from(state.pending);
     for (final movement in current) {
-      await ref
-          .read(transactionsControllerProvider.notifier)
-          .addExpense(
-            amountCop: movement.amountCop,
-            description: movement.merchant,
-            category: movement.suggestedCategory,
-            date: movement.detectedAt,
-            paymentMethod: movement.paymentMethod,
-            recurrence: RecurrenceFrequency.none,
-            isAutomatic: true,
-          );
+      await confirmOne(movement);
     }
-    await ref.read(automaticDetectionRepositoryProvider).clearPending();
-    state = state.copyWith(pending: const []);
   }
 
   Future<void> discardOne(String id) async {
