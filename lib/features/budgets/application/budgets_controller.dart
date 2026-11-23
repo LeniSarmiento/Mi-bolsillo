@@ -1,3 +1,5 @@
+import '../../profile/application/settings_controller.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_bolsillo/app/providers.dart';
 import 'package:mi_bolsillo/features/budgets/domain/budget_item.dart';
@@ -32,6 +34,7 @@ class BudgetsController extends Notifier<BudgetsState> {
   }
 
   Future<void> saveBudget({
+    String? id,
     required String category,
     required int limitCop,
     required BudgetPeriod period,
@@ -39,16 +42,19 @@ class BudgetsController extends Notifier<BudgetsState> {
     required bool alertAt100,
   }) async {
     final repo = ref.read(budgetRepositoryProvider);
-    await repo.addBudget(
-      BudgetItem(
-        id: '',
-        category: category,
-        limitCop: limitCop,
-        period: period,
-        alertAt80: alertAt80,
-        alertAt100: alertAt100,
-      ),
+    final budget = BudgetItem(
+      id: id ?? '',
+      category: category,
+      limitCop: limitCop,
+      period: period,
+      alertAt80: alertAt80,
+      alertAt100: alertAt100,
     );
+    if (id == null) {
+      await repo.addBudget(budget);
+    } else {
+      await repo.updateBudget(budget);
+    }
     final updated = await repo.getBudgets();
     state = state.copyWith(items: updated);
   }
@@ -76,20 +82,50 @@ final budgetProgressListProvider = Provider<List<BudgetProgress>>((ref) {
   final budgets = ref.watch(budgetsControllerProvider).items;
   final transactions = ref.watch(transactionsControllerProvider).items;
 
-  final spentByCategory = <String, int>{};
-  for (final tx in transactions) {
-    if (tx.type == TransactionType.expense) {
-      spentByCategory[tx.categoryOrOrigin] =
-          (spentByCategory[tx.categoryOrOrigin] ?? 0) + tx.amountCop;
-    }
-  }
-
+  final today = DateTime.now();
+  final warnings = ref.watch(
+    settingsControllerProvider.select((s) => s.budget80AlertEnabled),
+  );
   return budgets
       .map(
-        (b) => BudgetProgress(
-          budget: b,
-          spentCop: spentByCategory[b.category] ?? 0,
-        ),
+        (b) => budgetProgress(b, transactions, today, warningEnabled: warnings),
       )
       .toList();
 });
+
+BudgetProgress budgetProgress(
+  BudgetItem b,
+  Iterable<TransactionItem> movements,
+  DateTime today, {
+  bool warningEnabled = true,
+}) {
+  final start = switch (b.period) {
+    BudgetPeriod.monthly => DateTime(today.year, today.month),
+    BudgetPeriod.weekly => DateTime(
+      today.year,
+      today.month,
+      today.day - today.weekday + 1,
+    ),
+    BudgetPeriod.biweekly => DateTime(
+      today.year,
+      today.month,
+      today.day < 16 ? 1 : 16,
+    ),
+  };
+  final end = DateTime(today.year, today.month, today.day + 1);
+  final spent = movements
+      .where(
+        (m) =>
+            m.status == MovementStatus.confirmed &&
+            m.type == TransactionType.expense &&
+            m.categoryOrOrigin == b.category &&
+            !m.date.isBefore(start) &&
+            m.date.isBefore(end),
+      )
+      .fold<int>(0, (s, m) => s + m.amountCop);
+  return BudgetProgress(
+    budget: b,
+    spentCop: spent,
+    warningEnabled: warningEnabled,
+  );
+}

@@ -1,3 +1,5 @@
+import '../../../app/providers.dart';
+
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,7 +9,7 @@ import 'package:mi_bolsillo/core/theme/app_spacing.dart';
 import 'package:mi_bolsillo/core/widgets/app_snackbar.dart';
 import 'package:mi_bolsillo/features/automatic_detection/application/automatic_detection_controller.dart';
 
-/// Screen 8: Detección automática (simulada localmente sin permisos reales).
+/// Screen 8: Detección automática con consentimiento en Android.
 class AutoDetectionScreen extends ConsumerWidget {
   const AutoDetectionScreen({super.key});
 
@@ -17,22 +19,47 @@ class AutoDetectionScreen extends ConsumerWidget {
       'Notificaciones de compras con tarjeta o QR',
       Icons.account_balance_rounded,
     ),
-    (
-      'Nequi',
-      'Pagos, envíos y compras desde tu bolsillo digital',
-      Icons.smartphone_rounded,
-    ),
-    (
-      'Daviplata',
-      'Movimientos de pagos y recargas locales',
-      Icons.payments_outlined,
-    ),
-    (
-      'Tarjetas de Crédito / Débito',
-      'Alertas de compras en comercios',
-      Icons.credit_card_rounded,
-    ),
+    ('Nequi', 'Notificaciones de compras y pagos', Icons.smartphone_rounded),
+    ('Daviplata', 'Notificaciones de compras y pagos', Icons.payments_outlined),
   ];
+
+  Future<void> _change(
+    BuildContext context,
+    WidgetRef ref,
+    bool enabled,
+  ) async {
+    if (enabled) {
+      final accepted = await showDialog<bool>(
+        context: context,
+        builder: (dialog) => AlertDialog(
+          title: const Text('Acceso a notificaciones'),
+          content: const Text(
+            'Android concede acceso a las notificaciones. Mi Bolsillo revisa avisos de compra de las aplicaciones indicadas y guarda en este dispositivo el comercio, monto, fecha y origen para que los confirmes. Puedes desactivarlo aquí o revocar el acceso en Ajustes.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialog, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialog, true),
+              child: const Text('Continuar'),
+            ),
+          ],
+        ),
+      );
+      if (accepted != true || !context.mounted) return;
+    }
+    try {
+      await ref
+          .read(automaticDetectionControllerProvider.notifier)
+          .setEnabled(enabled);
+    } catch (_) {
+      if (context.mounted) {
+        AppSnackbar.showError(context, 'No se pudo configurar el acceso');
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -40,6 +67,7 @@ class AutoDetectionScreen extends ConsumerWidget {
     final semantic = context.semanticColors;
     final state = ref.watch(automaticDetectionControllerProvider);
 
+    final supported = ref.read(bridgeProvider).supported;
     return Scaffold(
       appBar: AppBar(title: const Text('Detección automática')),
       body: SafeArea(
@@ -56,21 +84,14 @@ class AutoDetectionScreen extends ConsumerWidget {
                   Card(
                     child: SwitchListTile(
                       value: state.isEnabled,
-                      onChanged: (val) async {
-                        await ref
-                            .read(automaticDetectionControllerProvider.notifier)
-                            .setEnabled(val);
-                        if (!context.mounted) return;
-                        AppSnackbar.showSuccess(
-                          context,
-                          val
-                              ? 'Detección automática activada (simulación)'
-                              : 'Detección automática pausada',
-                        );
-                      },
+                      onChanged: supported
+                          ? (val) => _change(context, ref, val)
+                          : null,
                       title: const Text('Detección activa'),
                       subtitle: Text(
-                        state.isEnabled
+                        !supported
+                            ? 'Disponible únicamente en Android'
+                            : state.isEnabled
                             ? 'Identifica pagos en tu teléfono antes de guardarlos.'
                             : 'Pausada: solo registrarás movimientos manualmente.',
                       ),
@@ -136,7 +157,7 @@ class AutoDetectionScreen extends ConsumerWidget {
                               const SizedBox(width: AppSpacing.xs),
                               const Expanded(
                                 child: Text(
-                                  'Privacidad 100% garantizada: el análisis ocurre en tu dispositivo sin enviar datos a servidores externos.',
+                                  'La información se procesa y almacena localmente en tu dispositivo.',
                                 ),
                               ),
                             ],
@@ -180,12 +201,9 @@ class AutoDetectionScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: AppSpacing.lg),
                   FilledButton.icon(
-                    onPressed: () {
-                      AppSnackbar.showSuccess(
-                        context,
-                        'Simulación lista: los permisos reales de Android se conectarán en una fase posterior.',
-                      );
-                    },
+                    onPressed: supported
+                        ? () => _change(context, ref, true)
+                        : null,
                     icon: const Icon(Icons.settings_suggest_rounded),
                     label: const Text('Configurar permisos de Android'),
                   ),

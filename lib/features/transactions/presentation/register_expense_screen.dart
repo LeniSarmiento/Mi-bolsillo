@@ -33,6 +33,23 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
   late DateTime _selectedDate;
   late RecurrenceFrequency _recurrence;
   String? _formError;
+  bool _saving = false;
+  Future<void> _saveOnce() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await _save();
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _formError =
+              'No se pudo guardar. Revisa los datos e inténtalo nuevamente.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
 
   bool get _isEditing => widget.existingTransaction != null;
 
@@ -296,7 +313,7 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                     ),
                     const SizedBox(height: AppSpacing.xl),
                     FilledButton.icon(
-                      onPressed: _save,
+                      onPressed: _saving ? null : _saveOnce,
                       icon: const Icon(Icons.check_rounded),
                       label: Text(
                         _isEditing ? 'Actualizar gasto' : 'Guardar gasto',

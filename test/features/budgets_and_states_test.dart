@@ -1,8 +1,9 @@
 import 'package:material_ui/material_ui.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../support/finance_fixture.dart';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:mi_bolsillo/app/app.dart';
 import 'package:mi_bolsillo/core/routing/app_routes.dart';
 
 Future<void> _pumpApp(
@@ -11,10 +12,7 @@ Future<void> _pumpApp(
 }) async {
   await tester.binding.setSurfaceSize(const Size(360, 800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
-  await tester.pumpWidget(
-    ProviderScope(child: MiBolsilloApp(initialLocation: initialLocation)),
-  );
-  await tester.pumpAndSettle();
+  await pumpFinance(tester, initialLocation);
 }
 
 void main() {

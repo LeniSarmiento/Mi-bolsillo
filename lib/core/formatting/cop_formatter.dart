@@ -37,7 +37,8 @@ abstract final class CopFormatter {
   static int? parseDigits(String raw) {
     final digitsOnly = raw.replaceAll(RegExp(r'[^0-9]'), '');
     if (digitsOnly.isEmpty) return null;
-    return int.tryParse(digitsOnly);
+    final value = int.tryParse(digitsOnly);
+    return value != null && value <= 9007199254740991 ? value : null;
   }
 
   /// Formats integer COP input live with thousands separators while typing.
@@ -54,7 +55,7 @@ class _CopThousandsInputFormatter extends TextInputFormatter {
     if (digits.isEmpty) {
       return const TextEditingValue(text: '');
     }
-    final parsed = int.tryParse(digits);
+    final parsed = CopFormatter.parseDigits(digits);
     if (parsed == null) return oldValue;
     final formatted = CopFormatter.formatDigits(parsed);
     return TextEditingValue(

@@ -52,21 +52,33 @@ class BudgetItem {
 /// Computed progress view model for a budget against current expenses.
 @immutable
 class BudgetProgress {
-  const BudgetProgress({required this.budget, required this.spentCop});
+  const BudgetProgress({
+    required this.budget,
+    required this.spentCop,
+    this.warningEnabled = true,
+  });
 
   final BudgetItem budget;
   final int spentCop;
+  final bool warningEnabled;
 
   int get remainingCop => budget.limitCop - spentCop;
 
   int get percentUsed {
     if (budget.limitCop <= 0) return 0;
-    return ((spentCop * 100) / budget.limitCop).round();
+    return (spentCop * 100) ~/ budget.limitCop;
   }
 
   BudgetAlertLevel get alertLevel {
-    if (spentCop >= budget.limitCop) return BudgetAlertLevel.exhausted;
-    if (percentUsed >= 80) return BudgetAlertLevel.warning80;
+    if (budget.alertAt100 && spentCop >= budget.limitCop) {
+      return BudgetAlertLevel.exhausted;
+    }
+    if (warningEnabled &&
+        budget.alertAt80 &&
+        percentUsed >= 80 &&
+        spentCop < budget.limitCop) {
+      return BudgetAlertLevel.warning80;
+    }
     return BudgetAlertLevel.healthy;
   }
 }

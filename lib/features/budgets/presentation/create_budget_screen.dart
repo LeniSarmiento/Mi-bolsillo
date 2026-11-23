@@ -12,7 +12,8 @@ import 'package:mi_bolsillo/features/transactions/domain/transaction_item.dart';
 
 /// Screen 11: Crear presupuesto con ritmo diario y alertas preventivas al 80%/100%.
 class CreateBudgetScreen extends ConsumerStatefulWidget {
-  const CreateBudgetScreen({super.key});
+  const CreateBudgetScreen({super.key, this.existing});
+  final BudgetItem? existing;
 
   @override
   ConsumerState<CreateBudgetScreen> createState() => _CreateBudgetScreenState();
@@ -29,6 +30,36 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
   bool _alert80 = true;
   bool _alert100 = true;
   String? _formError;
+  bool _saving = false;
+  Future<void> _saveOnce() async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      await _saveBudget();
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _formError =
+              'No se pudo guardar. Revisa los datos e inténtalo nuevamente.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    final b = widget.existing;
+    if (b != null) {
+      _limitController.text = CopFormatter.formatDigits(b.limitCop);
+      _selectedCategory = b.category;
+      _period = b.period;
+      _alert80 = b.alertAt80;
+      _alert100 = b.alertAt100;
+    }
+  }
 
   @override
   void dispose() {
@@ -57,6 +88,7 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
     await ref
         .read(budgetsControllerProvider.notifier)
         .saveBudget(
+          id: widget.existing?.id,
           category: _selectedCategory,
           limitCop: limit,
           period: _period,
@@ -80,7 +112,11 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
     final dailyLimit = limit > 0 ? limit ~/ _period.days : 0;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Crear presupuesto')),
+      appBar: AppBar(
+        title: Text(
+          widget.existing == null ? 'Crear presupuesto' : 'Editar presupuesto',
+        ),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: EdgeInsets.all(AppSpacing.pagePadding(context)),
@@ -228,7 +264,7 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
                     ),
                     const SizedBox(height: AppSpacing.xl),
                     FilledButton.icon(
-                      onPressed: _saveBudget,
+                      onPressed: _saving ? null : _saveOnce,
                       icon: const Icon(Icons.save_rounded),
                       label: const Text('Guardar presupuesto'),
                     ),

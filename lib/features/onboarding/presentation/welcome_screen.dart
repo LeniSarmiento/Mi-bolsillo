@@ -110,12 +110,12 @@ class WelcomeScreen extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  'Privacidad Garantizada · 100% Local',
+                                  'Datos en tu dispositivo',
                                   style: theme.textTheme.titleSmall,
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'Tus cifras simuladas permanecen únicamente en tu dispositivo.',
+                                  'Tus datos financieros permanecen únicamente en tu dispositivo.',
                                   style: theme.textTheme.bodyMedium,
                                 ),
                               ],
@@ -134,7 +134,7 @@ class WelcomeScreen extends StatelessWidget {
                   const SizedBox(height: AppSpacing.sm),
                   OutlinedButton(
                     onPressed: () => context.go(AppRoutes.dashboard),
-                    child: const Text('¿Ya tienes cuenta? Ir al inicio'),
+                    child: const Text('Ir al inicio'),
                   ),
                 ],
               ),

@@ -1,5 +1,9 @@
 import 'package:material_ui/material_ui.dart';
 
+enum MovementStatus { pending, confirmed, discarded }
+
+enum MovementSource { manual, notification, recurring }
+
 enum TransactionType { expense, baseIncome, additionalIncome }
 
 enum RecurrenceFrequency {
@@ -59,6 +63,10 @@ class TransactionItem {
     required this.recurrence,
     this.note = '',
     this.linkedIncomeId,
+    this.createdAt,
+    this.updatedAt,
+    this.status = MovementStatus.confirmed,
+    this.source = MovementSource.manual,
   });
 
   final String id;
@@ -72,6 +80,9 @@ class TransactionItem {
   final RecurrenceFrequency recurrence;
   final String note;
   final String? linkedIncomeId;
+  final DateTime? createdAt, updatedAt;
+  final MovementStatus status;
+  final MovementSource source;
 
   bool get isIncome => type != TransactionType.expense;
 
@@ -89,6 +100,10 @@ class TransactionItem {
     String? linkedIncomeId,
   }) {
     return TransactionItem(
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      status: status,
+      source: source,
       id: id ?? this.id,
       description: description ?? this.description,
       amountCop: amountCop ?? this.amountCop,

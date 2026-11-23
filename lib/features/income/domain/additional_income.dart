@@ -25,6 +25,7 @@ class AdditionalIncome {
     required this.receptionMethod,
     required this.note,
     required this.recurrence,
+    this.nextOccurrence,
   });
 
   final String id;
@@ -35,6 +36,7 @@ class AdditionalIncome {
   final String receptionMethod;
   final String note;
   final RecurrenceFrequency recurrence;
+  final DateTime? nextOccurrence;
 
   AdditionalIncome copyWith({
     String? id,
@@ -55,6 +57,7 @@ class AdditionalIncome {
       receptionMethod: receptionMethod ?? this.receptionMethod,
       note: note ?? this.note,
       recurrence: recurrence ?? this.recurrence,
+      nextOccurrence: nextOccurrence,
     );
   }
 }

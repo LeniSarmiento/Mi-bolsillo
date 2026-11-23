@@ -1,7 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_bolsillo/app/providers.dart';
 import 'package:mi_bolsillo/features/income/application/income_controller.dart';
-import 'package:mi_bolsillo/features/profile/application/settings_controller.dart';
 import 'package:mi_bolsillo/features/transactions/domain/transaction_item.dart';
 
 class TransactionsState {
@@ -99,17 +98,6 @@ final transactionsControllerProvider =
 final combinedMovementsProvider = Provider<List<TransactionItem>>((ref) {
   final txItems = ref.watch(transactionsControllerProvider).items;
   final incomes = ref.watch(incomeControllerProvider).items;
-  final monthlyIncomeCop = ref.watch(
-    settingsControllerProvider.select((s) => s.monthlyIncomeCop),
-  );
-
-  final adjustedTx = txItems.map((tx) {
-    if (tx.type == TransactionType.baseIncome) {
-      return tx.copyWith(amountCop: monthlyIncomeCop);
-    }
-    return tx;
-  }).toList();
-
   final additionalAsTx = incomes.map(
     (inc) => TransactionItem(
       id: 'linked-${inc.id}',
@@ -126,7 +114,7 @@ final combinedMovementsProvider = Provider<List<TransactionItem>>((ref) {
     ),
   );
 
-  final merged = [...adjustedTx, ...additionalAsTx]
+  final merged = [...txItems, ...additionalAsTx]
     ..sort((a, b) => b.date.compareTo(a.date));
   return merged;
 });
