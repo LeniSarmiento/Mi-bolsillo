@@ -27,8 +27,8 @@ class UserSettings {
   });
 
   factory UserSettings.defaults() => const UserSettings(
-    userName: 'Camila Restrepo',
-    monthlyIncomeCop: 2400000,
+    userName: 'Mi perfil',
+    monthlyIncomeCop: 0,
     payFrequency: PayFrequency.biweekly,
     autoRepeatBaseIncome: true,
     autoDetectionBannerVisible: true,
