@@ -22,8 +22,18 @@ class _StartupState extends ConsumerState<FinanceStartup> {
   late Future<bool> opening = _open();
   Future<bool> _open() async {
     await ref.read(ledgerProvider).generateDue();
-    return (await ref.read(settingsRepositoryProvider).getSettings())
-        .onboardingCompleted;
+    final settings = await ref.read(settingsRepositoryProvider).getSettings();
+    try {
+      final notifications = ref.read(appNotificationsProvider);
+      await notifications.initialize();
+      await notifications.syncDailyReminder(settings.dailyReminderEnabled);
+      await ref
+          .read(budgetAlertCoordinatorProvider)
+          .evaluate(enabled: settings.budget80AlertEnabled);
+    } catch (_) {
+      // Finance data must remain usable when Android notifications are unavailable.
+    }
+    return settings.onboardingCompleted;
   }
 
   @override

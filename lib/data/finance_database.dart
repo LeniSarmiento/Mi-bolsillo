@@ -66,6 +66,14 @@ class DetectionReceipts extends Table {
   Set<Column> get primaryKey => {fingerprint};
 }
 
+class BudgetAlertReceipts extends Table {
+  TextColumn get key => text()();
+  DateTimeColumn get created => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {key};
+}
+
 @DriftDatabase(
   tables: [
     Categories,
@@ -73,6 +81,7 @@ class DetectionReceipts extends Table {
     SpendingLimits,
     Preferences,
     DetectionReceipts,
+    BudgetAlertReceipts,
   ],
 )
 class FinanceDatabase extends _$FinanceDatabase {
@@ -93,7 +102,7 @@ class FinanceDatabase extends _$FinanceDatabase {
         ),
       );
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) async {
@@ -107,11 +116,12 @@ class FinanceDatabase extends _$FinanceDatabase {
       }
     },
     onUpgrade: (m, from, to) async {
-      if (from == 1 && to == 2) {
+      if (from == 1) {
         await m.createTable(detectionReceipts);
-        return;
       }
-      throw StateError('Versión de base de datos incompatible');
+      if (from <= 2) {
+        await m.createTable(budgetAlertReceipts);
+      }
     },
     beforeOpen: (_) async => customStatement('PRAGMA foreign_keys = ON'),
   );
@@ -120,5 +130,6 @@ class FinanceDatabase extends _$FinanceDatabase {
     await delete(spendingLimits).go();
     await delete(preferences).go();
     await delete(detectionReceipts).go();
+    await delete(budgetAlertReceipts).go();
   });
 }

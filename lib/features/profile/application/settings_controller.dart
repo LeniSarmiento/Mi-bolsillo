@@ -59,14 +59,32 @@ class SettingsController extends Notifier<UserSettings> {
     state = await ref.read(settingsRepositoryProvider).updateSettings(updated);
   }
 
-  Future<void> toggleDailyReminder(bool enabled) async {
+  Future<bool> toggleDailyReminder(bool enabled) async {
+    final notifications = ref.read(appNotificationsProvider);
+    try {
+      if (enabled && !await notifications.requestPermission()) return false;
+      if (!await notifications.syncDailyReminder(enabled)) return false;
+    } catch (_) {
+      return false;
+    }
     final updated = state.copyWith(dailyReminderEnabled: enabled);
     state = await ref.read(settingsRepositoryProvider).updateSettings(updated);
+    return true;
   }
 
-  Future<void> toggleBudget80Alert(bool enabled) async {
+  Future<bool> toggleBudget80Alert(bool enabled) async {
+    final notifications = ref.read(appNotificationsProvider);
+    try {
+      if (enabled && !await notifications.requestPermission()) return false;
+    } catch (_) {
+      return false;
+    }
     final updated = state.copyWith(budget80AlertEnabled: enabled);
     state = await ref.read(settingsRepositoryProvider).updateSettings(updated);
+    if (enabled) {
+      await ref.read(budgetAlertCoordinatorProvider).evaluate(enabled: true);
+    }
+    return true;
   }
 
   Future<void> resetDefaults() async {

@@ -2,19 +2,39 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mi_bolsillo/app/providers.dart';
 import 'package:mi_bolsillo/features/income/domain/additional_income.dart';
 import 'package:mi_bolsillo/features/transactions/domain/transaction_item.dart';
+import 'package:mi_bolsillo/core/errors/finance_failure.dart';
 
 class IncomeState {
-  const IncomeState({this.items = const [], this.isLoading = false});
+  const IncomeState({
+    this.items = const [],
+    this.isLoading = false,
+    this.isSaving = false,
+    this.isDeleting = false,
+    this.errorMessage,
+  });
 
   final List<AdditionalIncome> items;
   final bool isLoading;
+  final bool isSaving;
+  final bool isDeleting;
+  final String? errorMessage;
 
   int get totalCop => items.fold(0, (sum, item) => sum + item.amountCop);
 
-  IncomeState copyWith({List<AdditionalIncome>? items, bool? isLoading}) {
+  IncomeState copyWith({
+    List<AdditionalIncome>? items,
+    bool? isLoading,
+    bool? isSaving,
+    bool? isDeleting,
+    String? errorMessage,
+    bool clearError = false,
+  }) {
     return IncomeState(
       items: items ?? this.items,
       isLoading: isLoading ?? this.isLoading,
+      isSaving: isSaving ?? this.isSaving,
+      isDeleting: isDeleting ?? this.isDeleting,
+      errorMessage: clearError ? null : errorMessage ?? this.errorMessage,
     );
   }
 }
@@ -27,11 +47,18 @@ class IncomeController extends Notifier<IncomeState> {
   }
 
   Future<void> loadIncomes() async {
-    state = state.copyWith(isLoading: true);
-    final items = await ref
-        .read(incomeRepositoryProvider)
-        .getAdditionalIncomes();
-    state = IncomeState(items: items, isLoading: false);
+    state = state.copyWith(isLoading: true, clearError: true);
+    try {
+      final items = await ref
+          .read(incomeRepositoryProvider)
+          .getAdditionalIncomes();
+      state = IncomeState(items: items, isLoading: false);
+    } catch (error) {
+      state = state.copyWith(
+        isLoading: false,
+        errorMessage: FinanceFailure.from(error).message,
+      );
+    }
   }
 
   Future<void> addIncome({
@@ -43,35 +70,59 @@ class IncomeController extends Notifier<IncomeState> {
     required String note,
     required RecurrenceFrequency recurrence,
   }) async {
+    if (state.isSaving) return;
+    state = state.copyWith(isSaving: true, clearError: true);
     final repo = ref.read(incomeRepositoryProvider);
-    await repo.addAdditionalIncome(
-      AdditionalIncome(
-        id: '',
-        amountCop: amountCop,
-        reason: reason,
-        origin: origin,
-        date: date,
-        receptionMethod: receptionMethod,
-        note: note,
-        recurrence: recurrence,
-      ),
-    );
-    final updated = await repo.getAdditionalIncomes();
-    state = state.copyWith(items: updated);
+    try {
+      await repo.addAdditionalIncome(
+        AdditionalIncome(
+          id: '',
+          amountCop: amountCop,
+          reason: reason,
+          origin: origin,
+          date: date,
+          receptionMethod: receptionMethod,
+          note: note,
+          recurrence: recurrence,
+        ),
+      );
+      final updated = await repo.getAdditionalIncomes();
+      state = state.copyWith(items: updated, isSaving: false);
+    } catch (error, stackTrace) {
+      final failure = FinanceFailure.from(error);
+      state = state.copyWith(isSaving: false, errorMessage: failure.message);
+      Error.throwWithStackTrace(failure, stackTrace);
+    }
   }
 
   Future<void> updateIncome(AdditionalIncome income) async {
+    if (state.isSaving) return;
+    state = state.copyWith(isSaving: true, clearError: true);
     final repo = ref.read(incomeRepositoryProvider);
-    await repo.updateAdditionalIncome(income);
-    final updated = await repo.getAdditionalIncomes();
-    state = state.copyWith(items: updated);
+    try {
+      await repo.updateAdditionalIncome(income);
+      final updated = await repo.getAdditionalIncomes();
+      state = state.copyWith(items: updated, isSaving: false);
+    } catch (error, stackTrace) {
+      final failure = FinanceFailure.from(error);
+      state = state.copyWith(isSaving: false, errorMessage: failure.message);
+      Error.throwWithStackTrace(failure, stackTrace);
+    }
   }
 
   Future<void> deleteIncome(String id) async {
+    if (state.isDeleting) return;
+    state = state.copyWith(isDeleting: true, clearError: true);
     final repo = ref.read(incomeRepositoryProvider);
-    await repo.deleteAdditionalIncome(id);
-    final updated = await repo.getAdditionalIncomes();
-    state = state.copyWith(items: updated);
+    try {
+      await repo.deleteAdditionalIncome(id);
+      final updated = await repo.getAdditionalIncomes();
+      state = state.copyWith(items: updated, isDeleting: false);
+    } catch (error, stackTrace) {
+      final failure = FinanceFailure.from(error);
+      state = state.copyWith(isDeleting: false, errorMessage: failure.message);
+      Error.throwWithStackTrace(failure, stackTrace);
+    }
   }
 
   Future<void> clearAll() async {

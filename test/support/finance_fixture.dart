@@ -24,6 +24,7 @@ Future<void> pumpFinance(WidgetTester tester, String route) async {
       UserSettings.defaults().copyWith(
         monthlyIncomeCop: 2400000,
         onboardingCompleted: true,
+        budget80AlertEnabled: true,
       ),
     );
     for (final t in await MockTransactionRepository().getTransactions()) {

@@ -207,7 +207,7 @@ void main() {
     expect(await budgets.getBudgets(), isEmpty);
   });
   test(
-    'Ajustes y enteros sobreviven al cierre y a la migración v1 a v2',
+    'Ajustes y enteros sobreviven al cierre y a la migración v1 a v3',
     () async {
       await db.close();
       final dir = await Directory.systemTemp.createTemp('bolsillo-test-');
@@ -235,9 +235,13 @@ void main() {
       expect((await LocalSettings(l).getSettings()).themeMode, ThemeMode.dark);
       expect(await migrated.select(migrated.detectionReceipts).get(), isEmpty);
       expect(
+        await migrated.select(migrated.budgetAlertReceipts).get(),
+        isEmpty,
+      );
+      expect(
         (await migrated.customSelect('PRAGMA user_version').getSingle())
             .read<int>('user_version'),
-        2,
+        3,
       );
     },
   );

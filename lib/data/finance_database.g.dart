@@ -1878,6 +1878,223 @@ class DetectionReceiptsCompanion extends UpdateCompanion<DetectionReceipt> {
   }
 }
 
+class $BudgetAlertReceiptsTable extends BudgetAlertReceipts
+    with TableInfo<$BudgetAlertReceiptsTable, BudgetAlertReceipt> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $BudgetAlertReceiptsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdMeta = const VerificationMeta(
+    'created',
+  );
+  @override
+  late final GeneratedColumn<DateTime> created = GeneratedColumn<DateTime>(
+    'created',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [key, created];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'budget_alert_receipts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BudgetAlertReceipt> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('created')) {
+      context.handle(
+        _createdMeta,
+        created.isAcceptableOrUnknown(data['created']!, _createdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  BudgetAlertReceipt map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BudgetAlertReceipt(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      created: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created'],
+      )!,
+    );
+  }
+
+  @override
+  $BudgetAlertReceiptsTable createAlias(String alias) {
+    return $BudgetAlertReceiptsTable(attachedDatabase, alias);
+  }
+}
+
+class BudgetAlertReceipt extends DataClass
+    implements Insertable<BudgetAlertReceipt> {
+  final String key;
+  final DateTime created;
+  const BudgetAlertReceipt({required this.key, required this.created});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    map['created'] = Variable<DateTime>(created);
+    return map;
+  }
+
+  BudgetAlertReceiptsCompanion toCompanion(bool nullToAbsent) {
+    return BudgetAlertReceiptsCompanion(
+      key: Value(key),
+      created: Value(created),
+    );
+  }
+
+  factory BudgetAlertReceipt.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BudgetAlertReceipt(
+      key: serializer.fromJson<String>(json['key']),
+      created: serializer.fromJson<DateTime>(json['created']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'created': serializer.toJson<DateTime>(created),
+    };
+  }
+
+  BudgetAlertReceipt copyWith({String? key, DateTime? created}) =>
+      BudgetAlertReceipt(
+        key: key ?? this.key,
+        created: created ?? this.created,
+      );
+  BudgetAlertReceipt copyWithCompanion(BudgetAlertReceiptsCompanion data) {
+    return BudgetAlertReceipt(
+      key: data.key.present ? data.key.value : this.key,
+      created: data.created.present ? data.created.value : this.created,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BudgetAlertReceipt(')
+          ..write('key: $key, ')
+          ..write('created: $created')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(key, created);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BudgetAlertReceipt &&
+          other.key == this.key &&
+          other.created == this.created);
+}
+
+class BudgetAlertReceiptsCompanion extends UpdateCompanion<BudgetAlertReceipt> {
+  final Value<String> key;
+  final Value<DateTime> created;
+  final Value<int> rowid;
+  const BudgetAlertReceiptsCompanion({
+    this.key = const Value.absent(),
+    this.created = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  BudgetAlertReceiptsCompanion.insert({
+    required String key,
+    required DateTime created,
+    this.rowid = const Value.absent(),
+  }) : key = Value(key),
+       created = Value(created);
+  static Insertable<BudgetAlertReceipt> custom({
+    Expression<String>? key,
+    Expression<DateTime>? created,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (created != null) 'created': created,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  BudgetAlertReceiptsCompanion copyWith({
+    Value<String>? key,
+    Value<DateTime>? created,
+    Value<int>? rowid,
+  }) {
+    return BudgetAlertReceiptsCompanion(
+      key: key ?? this.key,
+      created: created ?? this.created,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (created.present) {
+      map['created'] = Variable<DateTime>(created.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BudgetAlertReceiptsCompanion(')
+          ..write('key: $key, ')
+          ..write('created: $created, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$FinanceDatabase extends GeneratedDatabase {
   _$FinanceDatabase(QueryExecutor e) : super(e);
   $FinanceDatabaseManager get managers => $FinanceDatabaseManager(this);
@@ -1887,6 +2104,8 @@ abstract class _$FinanceDatabase extends GeneratedDatabase {
   late final $PreferencesTable preferences = $PreferencesTable(this);
   late final $DetectionReceiptsTable detectionReceipts =
       $DetectionReceiptsTable(this);
+  late final $BudgetAlertReceiptsTable budgetAlertReceipts =
+      $BudgetAlertReceiptsTable(this);
   late final Index movementPeriod = Index(
     'movement_period',
     'CREATE INDEX movement_period ON movements (kind, status, occurred)',
@@ -1901,6 +2120,7 @@ abstract class _$FinanceDatabase extends GeneratedDatabase {
     spendingLimits,
     preferences,
     detectionReceipts,
+    budgetAlertReceipts,
     movementPeriod,
   ];
 }
@@ -3378,6 +3598,176 @@ typedef $$DetectionReceiptsTableProcessedTableManager =
       DetectionReceipt,
       PrefetchHooks Function()
     >;
+typedef $$BudgetAlertReceiptsTableCreateCompanionBuilder =
+    BudgetAlertReceiptsCompanion Function({
+      required String key,
+      required DateTime created,
+      Value<int> rowid,
+    });
+typedef $$BudgetAlertReceiptsTableUpdateCompanionBuilder =
+    BudgetAlertReceiptsCompanion Function({
+      Value<String> key,
+      Value<DateTime> created,
+      Value<int> rowid,
+    });
+
+class $$BudgetAlertReceiptsTableFilterComposer
+    extends Composer<_$FinanceDatabase, $BudgetAlertReceiptsTable> {
+  $$BudgetAlertReceiptsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get created => $composableBuilder(
+    column: $table.created,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$BudgetAlertReceiptsTableOrderingComposer
+    extends Composer<_$FinanceDatabase, $BudgetAlertReceiptsTable> {
+  $$BudgetAlertReceiptsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get created => $composableBuilder(
+    column: $table.created,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$BudgetAlertReceiptsTableAnnotationComposer
+    extends Composer<_$FinanceDatabase, $BudgetAlertReceiptsTable> {
+  $$BudgetAlertReceiptsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get created =>
+      $composableBuilder(column: $table.created, builder: (column) => column);
+}
+
+class $$BudgetAlertReceiptsTableTableManager
+    extends
+        RootTableManager<
+          _$FinanceDatabase,
+          $BudgetAlertReceiptsTable,
+          BudgetAlertReceipt,
+          $$BudgetAlertReceiptsTableFilterComposer,
+          $$BudgetAlertReceiptsTableOrderingComposer,
+          $$BudgetAlertReceiptsTableAnnotationComposer,
+          $$BudgetAlertReceiptsTableCreateCompanionBuilder,
+          $$BudgetAlertReceiptsTableUpdateCompanionBuilder,
+          (
+            BudgetAlertReceipt,
+            BaseReferences<
+              _$FinanceDatabase,
+              $BudgetAlertReceiptsTable,
+              BudgetAlertReceipt
+            >,
+          ),
+          BudgetAlertReceipt,
+          PrefetchHooks Function()
+        > {
+  $$BudgetAlertReceiptsTableTableManager(
+    _$FinanceDatabase db,
+    $BudgetAlertReceiptsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$BudgetAlertReceiptsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$BudgetAlertReceiptsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$BudgetAlertReceiptsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> key = const Value.absent(),
+                Value<DateTime> created = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => BudgetAlertReceiptsCompanion(
+                key: key,
+                created: created,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String key,
+                required DateTime created,
+                Value<int> rowid = const Value.absent(),
+              }) => BudgetAlertReceiptsCompanion.insert(
+                key: key,
+                created: created,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$BudgetAlertReceiptsTable, BudgetAlertReceipt>(
+                    table,
+                  ),
+                  BaseReferences<
+                    _$FinanceDatabase,
+                    $BudgetAlertReceiptsTable,
+                    BudgetAlertReceipt
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$BudgetAlertReceiptsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$FinanceDatabase,
+      $BudgetAlertReceiptsTable,
+      BudgetAlertReceipt,
+      $$BudgetAlertReceiptsTableFilterComposer,
+      $$BudgetAlertReceiptsTableOrderingComposer,
+      $$BudgetAlertReceiptsTableAnnotationComposer,
+      $$BudgetAlertReceiptsTableCreateCompanionBuilder,
+      $$BudgetAlertReceiptsTableUpdateCompanionBuilder,
+      (
+        BudgetAlertReceipt,
+        BaseReferences<
+          _$FinanceDatabase,
+          $BudgetAlertReceiptsTable,
+          BudgetAlertReceipt
+        >,
+      ),
+      BudgetAlertReceipt,
+      PrefetchHooks Function()
+    >;
 
 class $FinanceDatabaseManager {
   final _$FinanceDatabase _db;
@@ -3392,4 +3782,6 @@ class $FinanceDatabaseManager {
       $$PreferencesTableTableManager(_db, _db.preferences);
   $$DetectionReceiptsTableTableManager get detectionReceipts =>
       $$DetectionReceiptsTableTableManager(_db, _db.detectionReceipts);
+  $$BudgetAlertReceiptsTableTableManager get budgetAlertReceipts =>
+      $$BudgetAlertReceiptsTableTableManager(_db, _db.budgetAlertReceipts);
 }
