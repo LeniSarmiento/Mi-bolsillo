@@ -31,22 +31,30 @@ class MoneyAmountText extends StatelessWidget {
       isPositive: isIncome,
       includeCurrency: showCurrency,
     );
+    final semanticLabel = isIncome
+        ? 'Ingreso de ${CopFormatter.format(amountCop)}'
+        : 'Gasto de ${CopFormatter.format(amountCop)}';
 
     final effectiveStyle = (style ?? Theme.of(context).textTheme.titleSmall)!
         .copyWith(color: color, fontWeight: FontWeight.w700);
 
-    return FittedBox(
-      fit: BoxFit.scaleDown,
-      alignment: Alignment.centerRight,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (showIcon) ...[
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 4),
-          ],
-          Text(formatted, style: effectiveStyle),
-        ],
+    return Semantics(
+      label: semanticLabel,
+      child: ExcludeSemantics(
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerRight,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (showIcon) ...[
+                Icon(icon, size: 16, color: color),
+                const SizedBox(width: 4),
+              ],
+              Text(formatted, style: effectiveStyle),
+            ],
+          ),
+        ),
       ),
     );
   }

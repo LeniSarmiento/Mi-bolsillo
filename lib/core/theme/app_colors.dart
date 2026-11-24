@@ -27,7 +27,7 @@ abstract final class AppColors {
   static const Color darkTextPrimary = Color(0xFFF1F5F9);
   static const Color darkTextSecondary = Color(0xFF94A3B8);
 
-  static const Color expenseLight = Color(0xFFDC2626);
+  static const Color expenseLight = Color(0xFFB91C1C);
   static const Color expenseContainerLight = Color(0xFFFEE2E2);
   static const Color expenseDark = Color(0xFFF87171);
   static const Color expenseContainerDark = Color(0xFF451A1A);
@@ -70,7 +70,7 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
     incomeContainer: AppColors.incomeContainerLight,
     expense: AppColors.expenseLight,
     expenseContainer: AppColors.expenseContainerLight,
-    warning: AppColors.warning,
+    warning: Color(0xFFB45309),
     warningContainer: AppColors.warningContainerLight,
     heroStart: AppColors.primary,
     heroEnd: Color(0xFF146C43),

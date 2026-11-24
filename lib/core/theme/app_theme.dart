@@ -75,6 +75,7 @@ abstract final class AppTheme {
       useMaterial3: true,
       brightness: brightness,
       fontFamily: 'Inter',
+      materialTapTargetSize: MaterialTapTargetSize.padded,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: bg,
       textTheme: textTheme,

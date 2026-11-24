@@ -103,8 +103,12 @@ GoRouter createAppRouter({String initialLocation = AppRoutes.welcome}) {
       ),
       GoRoute(
         path: AppRoutes.createBudget,
-        builder: (context, state) =>
-            CreateBudgetScreen(existing: state.extra as BudgetItem?),
+        builder: (context, state) {
+          final existing = state.extra is BudgetItem
+              ? state.extra as BudgetItem
+              : null;
+          return CreateBudgetScreen(existing: existing);
+        },
       ),
     ],
     errorBuilder: (context, state) => Scaffold(
