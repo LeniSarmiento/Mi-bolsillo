@@ -128,18 +128,54 @@ class LocalSettings implements SettingsRepository {
   Future<UserSettings> getSettings() async {
     final row = await db.select(db.preferences).getSingleOrNull();
     if (row == null) return UserSettings.defaults();
-    final map = jsonDecode(row.payload) as Map<String, dynamic>;
+    final defaults = UserSettings.defaults();
+    late final Map<String, dynamic> map;
+    try {
+      final decoded = jsonDecode(row.payload);
+      if (decoded is! Map<String, dynamic>) return defaults;
+      map = decoded;
+    } catch (_) {
+      return defaults;
+    }
+
+    T enumValue<T extends Enum>(Iterable<T> values, Object? name, T fallback) =>
+        values.where((value) => value.name == name).firstOrNull ?? fallback;
+    final storedSalary = map['salary'];
+    final salary = storedSalary is int && storedSalary >= 0
+        ? storedSalary
+        : defaults.monthlyIncomeCop;
+    final storedName = map['name'];
+    final name = storedName is String && storedName.trim().isNotEmpty
+        ? storedName.trim()
+        : defaults.userName;
+
     return UserSettings(
-      userName: map['name'],
-      monthlyIncomeCop: map['salary'],
-      payFrequency: PayFrequency.values.byName(map['frequency']),
-      autoRepeatBaseIncome: map['repeat'],
-      autoDetectionBannerVisible: map['banner'],
-      dailyReminderEnabled: map['daily'],
-      budget80AlertEnabled: map['budget'],
-      themeMode: ThemeMode.values.byName(map['theme']),
-      hideBalances: map['hide'],
-      onboardingCompleted: map['onboarded'],
+      userName: name,
+      monthlyIncomeCop: salary,
+      payFrequency: enumValue(
+        PayFrequency.values,
+        map['frequency'],
+        defaults.payFrequency,
+      ),
+      autoRepeatBaseIncome: map['repeat'] is bool
+          ? map['repeat'] as bool
+          : defaults.autoRepeatBaseIncome,
+      autoDetectionBannerVisible: map['banner'] is bool
+          ? map['banner'] as bool
+          : defaults.autoDetectionBannerVisible,
+      dailyReminderEnabled: map['daily'] is bool
+          ? map['daily'] as bool
+          : defaults.dailyReminderEnabled,
+      budget80AlertEnabled: map['budget'] is bool
+          ? map['budget'] as bool
+          : defaults.budget80AlertEnabled,
+      themeMode: enumValue(ThemeMode.values, map['theme'], defaults.themeMode),
+      hideBalances: map['hide'] is bool
+          ? map['hide'] as bool
+          : defaults.hideBalances,
+      onboardingCompleted: map['onboarded'] is bool
+          ? map['onboarded'] as bool
+          : defaults.onboardingCompleted,
     );
   }
 

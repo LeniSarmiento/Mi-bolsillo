@@ -60,6 +60,19 @@ class _MiBolsilloAppState extends ConsumerState<MiBolsilloApp>
     ref.invalidate(transactionsControllerProvider);
     ref.invalidate(incomeControllerProvider);
     ref.invalidate(automaticDetectionControllerProvider);
+    unawaited(_evaluateRecurringBudgetAlerts());
+  }
+
+  Future<void> _evaluateRecurringBudgetAlerts() async {
+    try {
+      await ref.read(ledgerProvider).generateDue();
+      final settings = await ref.read(settingsRepositoryProvider).getSettings();
+      await ref
+          .read(budgetAlertCoordinatorProvider)
+          .evaluate(enabled: settings.budget80AlertEnabled);
+    } catch (_) {
+      // Refreshing alerts must never make the financial screens unavailable.
+    }
   }
 
   @override

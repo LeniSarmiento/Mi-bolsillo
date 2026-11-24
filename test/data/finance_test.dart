@@ -206,6 +206,32 @@ void main() {
     await budgets.deleteBudget(b.id);
     expect(await budgets.getBudgets(), isEmpty);
   });
+  test('Preferencias antiguas o dañadas usan valores seguros', () async {
+    await db
+        .into(db.preferences)
+        .insert(
+          const Preference(
+            id: 1,
+            payload: '{"name":" Lenin ","salary":1250000,"frequency":"desconocida","daily":true}',
+          ),
+        );
+    final partial = await LocalSettings(ledger).getSettings();
+    expect(partial.userName, 'Lenin');
+    expect(partial.monthlyIncomeCop, 1250000);
+    expect(partial.payFrequency, UserSettings.defaults().payFrequency);
+    expect(partial.dailyReminderEnabled, isTrue);
+    expect(partial.budget80AlertEnabled, isFalse);
+    expect(partial.themeMode, ThemeMode.light);
+
+    await db
+        .into(db.preferences)
+        .insertOnConflictUpdate(
+          const Preference(id: 1, payload: 'contenido no válido'),
+        );
+    final damaged = await LocalSettings(ledger).getSettings();
+    expect(damaged.monthlyIncomeCop, 0);
+    expect(damaged.onboardingCompleted, isFalse);
+  });
   test(
     'Ajustes y enteros sobreviven al cierre y a la migración v1 a v3',
     () async {
