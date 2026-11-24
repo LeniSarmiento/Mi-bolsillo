@@ -88,6 +88,11 @@ class SettingsController extends Notifier<UserSettings> {
   }
 
   Future<void> resetDefaults() async {
+    try {
+      await ref.read(appNotificationsProvider).syncDailyReminder(false);
+    } catch (_) {
+      // Resetting local settings remains possible if Android is unavailable.
+    }
     state = await ref.read(settingsRepositoryProvider).resetSettings();
   }
 }

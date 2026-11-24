@@ -218,6 +218,13 @@ class ProfileScreen extends ConsumerWidget {
                         }
                         return;
                       }
+                      try {
+                        await ref
+                            .read(appNotificationsProvider)
+                            .syncDailyReminder(false);
+                      } catch (_) {
+                        // The local wipe succeeded even if Android cannot cancel now.
+                      }
                       if (!context.mounted) return;
                       ref.invalidate(incomeControllerProvider);
                       ref.invalidate(transactionsControllerProvider);
