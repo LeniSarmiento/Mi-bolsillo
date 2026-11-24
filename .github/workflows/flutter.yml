@@ -31,8 +31,8 @@ jobs:
         run: flutter test
       - name: Build web
         run: flutter build web --no-web-resources-cdn
+      - name: Build Android debug APK
+        run: flutter build apk --debug
       - name: Test Android native code
         working-directory: android
         run: ./gradlew testDebugUnitTest
-      - name: Build Android debug APK
-        run: flutter build apk --debug
