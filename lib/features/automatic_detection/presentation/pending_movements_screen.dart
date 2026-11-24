@@ -25,8 +25,12 @@ class PendingMovementsScreen extends ConsumerWidget {
   ) async {
     var merchant = movement.merchant;
     var amount = movement.amountCop;
-    var category = movement.suggestedCategory;
+    var category =
+        ExpenseCategory.values.any((c) => c.label == movement.suggestedCategory)
+        ? movement.suggestedCategory
+        : ExpenseCategory.other.label;
     final key = GlobalKey<FormState>();
+
     final updated = await showModalBottomSheet<PendingMovement>(
       context: context,
       isScrollControlled: true,
@@ -40,22 +44,33 @@ class PendingMovementsScreen extends ConsumerWidget {
         ),
         child: SafeArea(
           child: SingleChildScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
             child: Form(
               key: key,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  Text(
+                    'Editar movimiento pendiente',
+                    style: Theme.of(sheet).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: AppSpacing.md),
                   TextFormField(
                     initialValue: merchant,
+                    textInputAction: TextInputAction.next,
                     decoration: const InputDecoration(labelText: 'Comercio'),
                     onChanged: (s) => merchant = s.trim(),
                     validator: (_) =>
                         merchant.isEmpty ? 'Ingresa el comercio' : null,
                   ),
+                  const SizedBox(height: AppSpacing.sm),
                   TextFormField(
                     initialValue: CopFormatter.formatDigits(amount),
                     decoration: const InputDecoration(
                       labelText: 'Monto en COP',
+                      prefixText: '\$ ',
+                      suffixText: 'COP',
                     ),
                     keyboardType: TextInputType.number,
                     inputFormatters: [CopFormatter.inputFormatter],
@@ -63,8 +78,10 @@ class PendingMovementsScreen extends ConsumerWidget {
                     validator: (_) =>
                         amount <= 0 ? 'Ingresa un monto válido' : null,
                   ),
+                  const SizedBox(height: AppSpacing.sm),
                   DropdownButtonFormField<String>(
                     initialValue: category,
+                    decoration: const InputDecoration(labelText: 'Categoría'),
                     items: ExpenseCategory.values
                         .map(
                           (c) => DropdownMenuItem(
@@ -75,6 +92,7 @@ class PendingMovementsScreen extends ConsumerWidget {
                         .toList(),
                     onChanged: (s) => category = s ?? category,
                   ),
+                  const SizedBox(height: AppSpacing.lg),
                   FilledButton(
                     onPressed: () {
                       if (key.currentState!.validate()) {
@@ -97,12 +115,22 @@ class PendingMovementsScreen extends ConsumerWidget {
         ),
       ),
     );
+
     if (updated == null || !context.mounted) return;
-    await ref
-        .read(automaticDetectionControllerProvider.notifier)
-        .editPending(updated);
-    if (context.mounted) {
-      AppSnackbar.showSuccess(context, 'Movimiento pendiente actualizado');
+    try {
+      await ref
+          .read(automaticDetectionControllerProvider.notifier)
+          .editPending(updated);
+      if (context.mounted) {
+        AppSnackbar.showSuccess(context, 'Movimiento pendiente actualizado');
+      }
+    } catch (_) {
+      if (context.mounted) {
+        AppSnackbar.showError(
+          context,
+          'No se pudo actualizar el movimiento pendiente',
+        );
+      }
     }
   }
 
@@ -117,6 +145,13 @@ class PendingMovementsScreen extends ConsumerWidget {
       body: SafeArea(
         child: state.isLoading
             ? const LoadingStateView()
+            : state.errorMessage != null && state.pending.isEmpty
+            ? ErrorStateView(
+                message: state.errorMessage!,
+                onRetry: () => ref
+                    .read(automaticDetectionControllerProvider.notifier)
+                    .load(),
+              )
             : SingleChildScrollView(
                 padding: EdgeInsets.all(AppSpacing.pagePadding(context)),
                 child: Center(
@@ -127,6 +162,17 @@ class PendingMovementsScreen extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (state.errorMessage != null) ...[
+                          InlineErrorBanner(
+                            message: state.errorMessage!,
+                            onRetry: () => ref
+                                .read(
+                                  automaticDetectionControllerProvider.notifier,
+                                )
+                                .load(),
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                        ],
                         if (state.pending.isEmpty)
                           EmptyStateView(
                             icon: Icons.task_alt_rounded,
@@ -159,23 +205,43 @@ class PendingMovementsScreen extends ConsumerWidget {
                                   ),
                                   const SizedBox(height: AppSpacing.sm),
                                   FilledButton.icon(
-                                    onPressed: () async {
-                                      final count = state.pending.length;
-                                      await ref
-                                          .read(
-                                            automaticDetectionControllerProvider
-                                                .notifier,
+                                    onPressed: state.isSaving
+                                        ? null
+                                        : () async {
+                                            final count = state.pending.length;
+                                            try {
+                                              await ref
+                                                  .read(
+                                                    automaticDetectionControllerProvider
+                                                        .notifier,
+                                                  )
+                                                  .confirmAll();
+                                              if (!context.mounted) return;
+                                              AppSnackbar.showSuccess(
+                                                context,
+                                                '$count movimientos confirmados correctamente',
+                                              );
+                                            } catch (_) {
+                                              if (!context.mounted) return;
+                                              AppSnackbar.showError(
+                                                context,
+                                                'No se pudieron confirmar todos los movimientos',
+                                              );
+                                            }
+                                          },
+                                    icon: state.isSaving
+                                        ? const SizedBox(
+                                            width: 18,
+                                            height: 18,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
                                           )
-                                          .confirmAll();
-                                      if (!context.mounted) return;
-                                      AppSnackbar.showSuccess(
-                                        context,
-                                        '$count movimientos confirmados correctamente',
-                                      );
-                                    },
-                                    icon: const Icon(Icons.done_all_rounded),
+                                        : const Icon(Icons.done_all_rounded),
                                     label: Text(
-                                      'Confirmar todos (${state.pending.length})',
+                                      state.isSaving
+                                          ? 'Procesando...'
+                                          : 'Confirmar todos (${state.pending.length})',
                                     ),
                                   ),
                                 ],
@@ -228,10 +294,16 @@ class PendingMovementsScreen extends ConsumerWidget {
                                               ],
                                             ),
                                           ),
-                                          MoneyAmountText(
-                                            amountCop: item.amountCop,
-                                            isIncome: false,
-                                            showCurrency: false,
+                                          const SizedBox(width: AppSpacing.xs),
+                                          ConstrainedBox(
+                                            constraints: const BoxConstraints(
+                                              maxWidth: 120,
+                                            ),
+                                            child: MoneyAmountText(
+                                              amountCop: item.amountCop,
+                                              isIncome: false,
+                                              showCurrency: false,
+                                            ),
                                           ),
                                         ],
                                       ),
@@ -270,19 +342,33 @@ class PendingMovementsScreen extends ConsumerWidget {
                                         runSpacing: 8,
                                         children: [
                                           FilledButton.icon(
-                                            onPressed: () async {
-                                              await ref
-                                                  .read(
-                                                    automaticDetectionControllerProvider
-                                                        .notifier,
-                                                  )
-                                                  .confirmOne(item);
-                                              if (!context.mounted) return;
-                                              AppSnackbar.showSuccess(
-                                                context,
-                                                '"${item.merchant}" agregado a tus movimientos',
-                                              );
-                                            },
+                                            onPressed: state.isSaving
+                                                ? null
+                                                : () async {
+                                                    try {
+                                                      await ref
+                                                          .read(
+                                                            automaticDetectionControllerProvider
+                                                                .notifier,
+                                                          )
+                                                          .confirmOne(item);
+                                                      if (!context.mounted) {
+                                                        return;
+                                                      }
+                                                      AppSnackbar.showSuccess(
+                                                        context,
+                                                        '"${item.merchant}" agregado a tus movimientos',
+                                                      );
+                                                    } catch (_) {
+                                                      if (!context.mounted) {
+                                                        return;
+                                                      }
+                                                      AppSnackbar.showError(
+                                                        context,
+                                                        'No se pudo confirmar "${item.merchant}"',
+                                                      );
+                                                    }
+                                                  },
                                             icon: const Icon(
                                               Icons.check_rounded,
                                               size: 18,
@@ -290,11 +376,13 @@ class PendingMovementsScreen extends ConsumerWidget {
                                             label: const Text('Confirmar'),
                                           ),
                                           OutlinedButton.icon(
-                                            onPressed: () => _changeCategory(
-                                              context,
-                                              ref,
-                                              item,
-                                            ),
+                                            onPressed: state.isSaving
+                                                ? null
+                                                : () => _changeCategory(
+                                                    context,
+                                                    ref,
+                                                    item,
+                                                  ),
                                             icon: const Icon(
                                               Icons.edit_outlined,
                                               size: 18,
@@ -302,30 +390,46 @@ class PendingMovementsScreen extends ConsumerWidget {
                                             label: const Text('Editar'),
                                           ),
                                           TextButton.icon(
-                                            onPressed: () async {
-                                              final ok =
-                                                  await ConfirmDeleteDialog.show(
-                                                    context,
-                                                    title: '¿Descartar movimiento?',
-                                                    description:
-                                                        'Se descartará la notificación de "${item.merchant}" (${CopFormatter.format(item.amountCop)}).',
-                                                    confirmLabel: 'Descartar',
-                                                  );
-                                              if (!ok || !context.mounted) {
-                                                return;
-                                              }
-                                              await ref
-                                                  .read(
-                                                    automaticDetectionControllerProvider
-                                                        .notifier,
-                                                  )
-                                                  .discardOne(item.id);
-                                              if (!context.mounted) return;
-                                              AppSnackbar.showSuccess(
-                                                context,
-                                                'Movimiento pendiente descartado',
-                                              );
-                                            },
+                                            onPressed: state.isSaving
+                                                ? null
+                                                : () async {
+                                                    final ok =
+                                                        await ConfirmDeleteDialog.show(
+                                                          context,
+                                                          title: '¿Descartar movimiento?',
+                                                          description:
+                                                              'Se descartará la notificación de "${item.merchant}" (${CopFormatter.format(item.amountCop)}).',
+                                                          confirmLabel:
+                                                              'Descartar',
+                                                        );
+                                                    if (!ok ||
+                                                        !context.mounted) {
+                                                      return;
+                                                    }
+                                                    try {
+                                                      await ref
+                                                          .read(
+                                                            automaticDetectionControllerProvider
+                                                                .notifier,
+                                                          )
+                                                          .discardOne(item.id);
+                                                      if (!context.mounted) {
+                                                        return;
+                                                      }
+                                                      AppSnackbar.showSuccess(
+                                                        context,
+                                                        'Movimiento pendiente descartado',
+                                                      );
+                                                    } catch (_) {
+                                                      if (!context.mounted) {
+                                                        return;
+                                                      }
+                                                      AppSnackbar.showError(
+                                                        context,
+                                                        'No se pudo descartar el movimiento',
+                                                      );
+                                                    }
+                                                  },
                                             icon: Icon(
                                               Icons.delete_outline_rounded,
                                               size: 18,

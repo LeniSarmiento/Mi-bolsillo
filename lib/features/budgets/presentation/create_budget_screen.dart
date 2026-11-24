@@ -10,7 +10,7 @@ import 'package:mi_bolsillo/features/budgets/application/budgets_controller.dart
 import 'package:mi_bolsillo/features/budgets/domain/budget_item.dart';
 import 'package:mi_bolsillo/features/transactions/domain/transaction_item.dart';
 
-/// Screen 11: Crear presupuesto con ritmo diario y alertas preventivas al 80%/100%.
+/// Screen 11: Crear y editar presupuesto con ritmo diario y alertas preventivas al 80%/100%.
 class CreateBudgetScreen extends ConsumerStatefulWidget {
   const CreateBudgetScreen({super.key, this.existing});
   final BudgetItem? existing;
@@ -31,6 +31,7 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
   bool _alert100 = true;
   String? _formError;
   bool _saving = false;
+
   Future<void> _saveOnce() async {
     if (_saving) return;
     setState(() => _saving = true);
@@ -108,6 +109,9 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final semantic = context.semanticColors;
+    final isBusy =
+        _saving ||
+        ref.watch(budgetsControllerProvider.select((s) => s.isSaving));
     final limit = CopFormatter.parseDigits(_limitController.text) ?? 0;
     final dailyLimit = limit > 0 ? limit ~/ _period.days : 0;
 
@@ -119,6 +123,7 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: EdgeInsets.all(AppSpacing.pagePadding(context)),
           child: Center(
             child: ConstrainedBox(
@@ -147,8 +152,11 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
                           avatar: Icon(cat.icon, size: 18),
                           label: Text(cat.label),
                           selected: _selectedCategory == cat.label,
-                          onSelected: (_) =>
-                              setState(() => _selectedCategory = cat.label),
+                          onSelected: isBusy
+                              ? null
+                              : (_) => setState(
+                                  () => _selectedCategory = cat.label,
+                                ),
                         );
                       }).toList(),
                     ),
@@ -164,14 +172,19 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
                         return ChoiceChip(
                           label: Text(period.label),
                           selected: _period == period,
-                          onSelected: (_) => setState(() => _period = period),
+                          onSelected: isBusy
+                              ? null
+                              : (_) => setState(() => _period = period),
                         );
                       }).toList(),
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     TextFormField(
                       controller: _limitController,
+                      enabled: !isBusy,
                       keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.done,
+                      scrollPadding: const EdgeInsets.only(bottom: 120),
                       inputFormatters: [CopFormatter.inputFormatter],
                       style: theme.textTheme.headlineMedium,
                       onChanged: (_) => setState(() {}),
@@ -191,18 +204,19 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
                     const SizedBox(height: AppSpacing.xs),
                     Wrap(
                       spacing: AppSpacing.xs,
+                      runSpacing: AppSpacing.xs,
                       children: [
                         ActionChip(
                           label: const Text('+ \$200.000'),
-                          onPressed: () => _addQuick(200000),
+                          onPressed: isBusy ? null : () => _addQuick(200000),
                         ),
                         ActionChip(
                           label: const Text('+ \$500.000'),
-                          onPressed: () => _addQuick(500000),
+                          onPressed: isBusy ? null : () => _addQuick(500000),
                         ),
                         ActionChip(
                           label: const Text('+ \$1.000.000'),
-                          onPressed: () => _addQuick(1000000),
+                          onPressed: isBusy ? null : () => _addQuick(1000000),
                         ),
                       ],
                     ),
@@ -242,8 +256,9 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
                         children: [
                           CheckboxListTile(
                             value: _alert80,
-                            onChanged: (v) =>
-                                setState(() => _alert80 = v ?? true),
+                            onChanged: isBusy
+                                ? null
+                                : (v) => setState(() => _alert80 = v ?? true),
                             title: const Text('Avisarme al llegar al 80 %'),
                             subtitle: const Text(
                               'Alerta preventiva naranja antes de agotar el tope.',
@@ -252,8 +267,9 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
                           const Divider(height: 1),
                           CheckboxListTile(
                             value: _alert100,
-                            onChanged: (v) =>
-                                setState(() => _alert100 = v ?? true),
+                            onChanged: isBusy
+                                ? null
+                                : (v) => setState(() => _alert100 = v ?? true),
                             title: const Text('Avisarme al llegar al 100 %'),
                             subtitle: const Text(
                               'Notifica cuando el presupuesto esté agotado.',
@@ -264,9 +280,17 @@ class _CreateBudgetScreenState extends ConsumerState<CreateBudgetScreen> {
                     ),
                     const SizedBox(height: AppSpacing.xl),
                     FilledButton.icon(
-                      onPressed: _saving ? null : _saveOnce,
-                      icon: const Icon(Icons.save_rounded),
-                      label: const Text('Guardar presupuesto'),
+                      onPressed: isBusy ? null : _saveOnce,
+                      icon: isBusy
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.save_rounded),
+                      label: Text(
+                        isBusy ? 'Guardando...' : 'Guardar presupuesto',
+                      ),
                     ),
                   ],
                 ),

@@ -115,7 +115,7 @@ class WelcomeScreen extends StatelessWidget {
                                 ),
                                 const SizedBox(height: 2),
                                 Text(
-                                  'Tus datos financieros permanecen únicamente en tu dispositivo.',
+                                  'La información se procesa y almacena localmente en tu dispositivo.',
                                   style: theme.textTheme.bodyMedium,
                                 ),
                               ],

@@ -1,8 +1,7 @@
-import '../../../app/providers.dart';
-
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mi_bolsillo/app/providers.dart';
 import 'package:mi_bolsillo/core/formatting/cop_formatter.dart';
 import 'package:mi_bolsillo/core/routing/app_routes.dart';
 import 'package:mi_bolsillo/core/theme/app_colors.dart';
@@ -16,17 +15,85 @@ import 'package:mi_bolsillo/features/profile/application/settings_controller.dar
 import 'package:mi_bolsillo/features/transactions/application/transactions_controller.dart';
 
 /// Screen 12: Perfil y configuración (ThemeMode claro/oscuro, alertas y borrado de datos locales).
-class ProfileScreen extends ConsumerWidget {
+class ProfileScreen extends ConsumerStatefulWidget {
   const ProfileScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
+}
+
+class _ProfileScreenState extends ConsumerState<ProfileScreen> {
+  bool _isClearing = false;
+
+  Future<void> _toggleDailyReminder(bool enabled) async {
+    final ok = await ref
+        .read(settingsControllerProvider.notifier)
+        .toggleDailyReminder(enabled);
+    if (!mounted) return;
+    if (!ok) {
+      AppSnackbar.showError(
+        context,
+        'Activa el permiso de notificaciones en tu dispositivo para usar el recordatorio.',
+      );
+    }
+  }
+
+  Future<void> _toggleBudget80Alert(bool enabled) async {
+    final ok = await ref
+        .read(settingsControllerProvider.notifier)
+        .toggleBudget80Alert(enabled);
+    if (!mounted) return;
+    if (!ok) {
+      AppSnackbar.showError(
+        context,
+        'Activa el permiso de notificaciones en tu dispositivo para recibir alertas de presupuesto.',
+      );
+    }
+  }
+
+  Future<void> _clearAllLocalData() async {
+    if (_isClearing) return;
+    final ok = await ConfirmDeleteDialog.show(
+      context,
+      title: '¿Borrar datos locales y vaciar listas?',
+      description: 'Se eliminarán los movimientos, presupuestos y ajustes de este dispositivo. Esta acción es permanente.',
+      confirmLabel: 'Borrar todo',
+    );
+    if (!ok || !mounted) return;
+
+    setState(() => _isClearing = true);
+    final db = ref.read(databaseProvider);
+    final bridge = ref.read(bridgeProvider);
+    try {
+      await db.transaction(() async {
+        await bridge.erase();
+        await db.erase();
+      });
+      if (!mounted) return;
+      ref.invalidate(incomeControllerProvider);
+      ref.invalidate(transactionsControllerProvider);
+      ref.invalidate(automaticDetectionControllerProvider);
+      ref.invalidate(settingsControllerProvider);
+      ref.invalidate(budgetsControllerProvider);
+      AppSnackbar.showSuccess(context, 'Datos locales borrados');
+    } catch (_) {
+      if (mounted) {
+        AppSnackbar.showError(context, 'No se pudieron borrar los datos');
+      }
+    } finally {
+      if (mounted) setState(() => _isClearing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final semantic = context.semanticColors;
     final settings = ref.watch(settingsControllerProvider);
     final autoDetectEnabled = ref.watch(
       automaticDetectionControllerProvider.select((s) => s.isEnabled),
     );
+    final bridgeSupported = ref.watch(bridgeProvider).supported;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Perfil y Configuración')),
@@ -68,7 +135,7 @@ class ProfileScreen extends ConsumerWidget {
                                   style: theme.textTheme.titleLarge,
                                 ),
                                 Text(
-                                  'Datos en este dispositivo · v1.0.0',
+                                  'La información se almacena localmente en tu dispositivo · v1.0.0',
                                   style: theme.textTheme.bodyMedium,
                                 ),
                               ],
@@ -126,7 +193,11 @@ class ProfileScreen extends ConsumerWidget {
                           leading: const Icon(Icons.bolt_rounded),
                           title: const Text('Detección automática'),
                           subtitle: Text(
-                            autoDetectEnabled ? 'Activa' : 'Pausada',
+                            !bridgeSupported
+                                ? 'Disponible en Android'
+                                : autoDetectEnabled
+                                ? 'Activa'
+                                : 'Pausada',
                           ),
                           trailing: const Icon(Icons.chevron_right_rounded),
                           onTap: () => context.push(AppRoutes.autoDetection),
@@ -134,9 +205,7 @@ class ProfileScreen extends ConsumerWidget {
                         const Divider(height: 1),
                         SwitchListTile(
                           value: settings.dailyReminderEnabled,
-                          onChanged: (val) => ref
-                              .read(settingsControllerProvider.notifier)
-                              .toggleDailyReminder(val),
+                          onChanged: _toggleDailyReminder,
                           title: const Text('Recordatorio diario 8:00 PM'),
                           subtitle: const Text(
                             'Recordar revisar gastos del día.',
@@ -145,9 +214,7 @@ class ProfileScreen extends ConsumerWidget {
                         const Divider(height: 1),
                         SwitchListTile(
                           value: settings.budget80AlertEnabled,
-                          onChanged: (val) => ref
-                              .read(settingsControllerProvider.notifier)
-                              .toggleBudget80Alert(val),
+                          onChanged: _toggleBudget80Alert,
                           title: const Text('Alertas de presupuesto al 80 %'),
                           subtitle: const Text(
                             'Aviso preventivo antes de agotar un tope.',
@@ -194,44 +261,17 @@ class ProfileScreen extends ConsumerWidget {
                       foregroundColor: semantic.expense,
                       side: BorderSide(color: semantic.expense),
                     ),
-                    onPressed: () async {
-                      final ok = await ConfirmDeleteDialog.show(
-                        context,
-                        title: '¿Borrar datos locales y vaciar listas?',
-                        description: 'Se eliminarán los movimientos, presupuestos y ajustes de este dispositivo. Esta acción es permanente.',
-                        confirmLabel: 'Borrar todo',
-                      );
-                      if (!ok || !context.mounted) return;
-                      final db = ref.read(databaseProvider);
-                      final bridge = ref.read(bridgeProvider);
-                      try {
-                        await db.transaction(() async {
-                          await bridge.erase();
-                          await db.erase();
-                        });
-                      } catch (_) {
-                        if (context.mounted) {
-                          AppSnackbar.showError(
-                            context,
-                            'No se pudieron borrar los datos',
-                          );
-                        }
-                        return;
-                      }
-                      if (!context.mounted) return;
-                      ref.invalidate(incomeControllerProvider);
-                      ref.invalidate(transactionsControllerProvider);
-                      ref.invalidate(automaticDetectionControllerProvider);
-                      ref.invalidate(settingsControllerProvider);
-                      ref.invalidate(budgetsControllerProvider);
-                      if (!context.mounted) return;
-                      AppSnackbar.showSuccess(
-                        context,
-                        'Datos locales borrados',
-                      );
-                    },
-                    icon: const Icon(Icons.delete_forever_outlined),
-                    label: const Text('Borrar datos locales'),
+                    onPressed: _isClearing ? null : _clearAllLocalData,
+                    icon: _isClearing
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.delete_forever_outlined),
+                    label: Text(
+                      _isClearing ? 'Borrando...' : 'Borrar datos locales',
+                    ),
                   ),
                 ],
               ),

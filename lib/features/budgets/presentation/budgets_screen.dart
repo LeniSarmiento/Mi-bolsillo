@@ -41,6 +41,12 @@ class BudgetsScreen extends ConsumerWidget {
       body: SafeArea(
         child: budgetsState.isLoading
             ? const LoadingStateView()
+            : budgetsState.errorMessage != null && progressList.isEmpty
+            ? ErrorStateView(
+                message: budgetsState.errorMessage!,
+                onRetry: () =>
+                    ref.read(budgetsControllerProvider.notifier).loadBudgets(),
+              )
             : SingleChildScrollView(
                 padding: EdgeInsets.all(AppSpacing.pagePadding(context)),
                 child: Center(
@@ -51,6 +57,15 @@ class BudgetsScreen extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (budgetsState.errorMessage != null) ...[
+                          InlineErrorBanner(
+                            message: budgetsState.errorMessage!,
+                            onRetry: () => ref
+                                .read(budgetsControllerProvider.notifier)
+                                .loadBudgets(),
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                        ],
                         Row(
                           children: [
                             Expanded(
@@ -91,10 +106,13 @@ class BudgetsScreen extends ConsumerWidget {
                                 ),
                               ),
                               const SizedBox(height: AppSpacing.xs),
-                              Text(
-                                '${CopFormatter.format(totalSpent)} / ${CopFormatter.format(totalLimit)}',
-                                style: theme.textTheme.headlineSmall?.copyWith(
-                                  color: Colors.white,
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  '${CopFormatter.format(totalSpent)} / ${CopFormatter.format(totalLimit)}',
+                                  style: theme.textTheme.headlineSmall
+                                      ?.copyWith(color: Colors.white),
                                 ),
                               ),
                               const SizedBox(height: AppSpacing.sm),
@@ -153,6 +171,7 @@ class BudgetsScreen extends ConsumerWidget {
                           ...progressList.map(
                             (progress) => _BudgetCategoryCard(
                               progress: progress,
+                              isDeleting: budgetsState.isDeleting,
                               onDelete: () async {
                                 final ok = await ConfirmDeleteDialog.show(
                                   context,
@@ -161,14 +180,22 @@ class BudgetsScreen extends ConsumerWidget {
                                       'Se eliminará el límite para "${progress.budget.category}".',
                                 );
                                 if (!ok || !context.mounted) return;
-                                await ref
-                                    .read(budgetsControllerProvider.notifier)
-                                    .deleteBudget(progress.budget.id);
-                                if (!context.mounted) return;
-                                AppSnackbar.showSuccess(
-                                  context,
-                                  'Presupuesto eliminado correctamente',
-                                );
+                                try {
+                                  await ref
+                                      .read(budgetsControllerProvider.notifier)
+                                      .deleteBudget(progress.budget.id);
+                                  if (!context.mounted) return;
+                                  AppSnackbar.showSuccess(
+                                    context,
+                                    'Presupuesto eliminado correctamente',
+                                  );
+                                } catch (_) {
+                                  if (!context.mounted) return;
+                                  AppSnackbar.showError(
+                                    context,
+                                    'No se pudo eliminar el presupuesto.',
+                                  );
+                                }
                               },
                             ),
                           ),
@@ -183,9 +210,14 @@ class BudgetsScreen extends ConsumerWidget {
 }
 
 class _BudgetCategoryCard extends StatelessWidget {
-  const _BudgetCategoryCard({required this.progress, required this.onDelete});
+  const _BudgetCategoryCard({
+    required this.progress,
+    required this.isDeleting,
+    required this.onDelete,
+  });
 
   final BudgetProgress progress;
+  final bool isDeleting;
   final VoidCallback onDelete;
 
   @override
@@ -194,7 +226,7 @@ class _BudgetCategoryCard extends StatelessWidget {
     final semantic = context.semanticColors;
     final barColor = switch (progress.alertLevel) {
       BudgetAlertLevel.healthy => semantic.income,
-      BudgetAlertLevel.warning80 => semantic.warning,
+      BudgetAlertLevel.warning80 => AppColors.warning,
       BudgetAlertLevel.exhausted => semantic.expense,
     };
 
@@ -268,16 +300,18 @@ class _BudgetCategoryCard extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    onPressed: () => context.push(
-                      AppRoutes.createBudget,
-                      extra: progress.budget,
-                    ),
+                    onPressed: isDeleting
+                        ? null
+                        : () => context.push(
+                            AppRoutes.createBudget,
+                            extra: progress.budget,
+                          ),
                     tooltip: 'Editar presupuesto',
                     icon: const Icon(Icons.edit_outlined),
                   ),
                   IconButton(
                     tooltip: 'Eliminar presupuesto',
-                    onPressed: onDelete,
+                    onPressed: isDeleting ? null : onDelete,
                     icon: Icon(
                       Icons.delete_outline_rounded,
                       color: semantic.expense,

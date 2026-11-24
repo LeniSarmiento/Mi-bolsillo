@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mi_bolsillo/app/providers.dart';
 import 'package:mi_bolsillo/core/formatting/cop_formatter.dart';
 import 'package:mi_bolsillo/core/formatting/date_formatter.dart';
 import 'package:mi_bolsillo/core/routing/app_routes.dart';
@@ -21,6 +22,13 @@ import 'package:mi_bolsillo/features/transactions/application/transactions_contr
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
 
+  Future<void> _reload(WidgetRef ref) async {
+    await Future.wait([
+      ref.read(transactionsControllerProvider.notifier).loadTransactions(),
+      ref.read(incomeControllerProvider.notifier).loadIncomes(),
+    ]);
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
@@ -33,8 +41,10 @@ class DashboardScreen extends ConsumerWidget {
     final pendingCount = ref.watch(
       automaticDetectionControllerProvider.select((s) => s.pending.length),
     );
+    final bridgeSupported = ref.watch(bridgeProvider).supported;
 
     final isInitialLoading = txState.isLoading || incomeState.isLoading;
+    final errorMessage = txState.errorMessage ?? incomeState.errorMessage;
     final recentMovements = combined.take(4).toList();
     final now = DateTime.now();
     final remainingDays =
@@ -57,7 +67,7 @@ class DashboardScreen extends ConsumerWidget {
         ),
         actions: [
           IconButton(
-            tooltip: 'Movimientos pendientes',
+            tooltip: 'Movimientos pendientes ($pendingCount)',
             onPressed: () => context.push(AppRoutes.pendingMovements),
             icon: Badge(
               isLabelVisible: pendingCount > 0,
@@ -89,6 +99,8 @@ class DashboardScreen extends ConsumerWidget {
       body: SafeArea(
         child: isInitialLoading
             ? const LoadingStateView()
+            : errorMessage != null && combined.isEmpty
+            ? ErrorStateView(message: errorMessage, onRetry: () => _reload(ref))
             : SingleChildScrollView(
                 padding: EdgeInsets.fromLTRB(
                   AppSpacing.pagePadding(context),
@@ -104,6 +116,13 @@ class DashboardScreen extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (errorMessage != null) ...[
+                          InlineErrorBanner(
+                            message: errorMessage,
+                            onRetry: () => _reload(ref),
+                          ),
+                          const SizedBox(height: AppSpacing.md),
+                        ],
                         _GreetingHeader(
                           firstName: settings.firstName,
                           isNegative: summary.isNegative,
@@ -114,6 +133,7 @@ class DashboardScreen extends ConsumerWidget {
                           const SizedBox(height: AppSpacing.md),
                           _AutoDetectionBanner(
                             pendingCount: pendingCount,
+                            bridgeSupported: bridgeSupported,
                             onActivate: () =>
                                 context.push(AppRoutes.autoDetection),
                             onDismiss: () => ref
@@ -244,10 +264,12 @@ class DashboardScreen extends ConsumerWidget {
                                           spacing: 4,
                                           children: [
                                             TextButton.icon(
-                                              onPressed: () => context.push(
-                                                AppRoutes.registerIncome,
-                                                extra: income,
-                                              ),
+                                              onPressed: incomeState.isDeleting
+                                                  ? null
+                                                  : () => context.push(
+                                                      AppRoutes.registerIncome,
+                                                      extra: income,
+                                                    ),
                                               icon: const Icon(
                                                 Icons.edit_outlined,
                                                 size: 18,
@@ -255,30 +277,46 @@ class DashboardScreen extends ConsumerWidget {
                                               label: const Text('Editar'),
                                             ),
                                             TextButton.icon(
-                                              onPressed: () async {
-                                                final confirmed =
-                                                    await ConfirmDeleteDialog.show(
-                                                      context,
-                                                      title: '¿Eliminar ingreso adicional?',
-                                                      description:
-                                                          'Se eliminará "${income.reason}" (${CopFormatter.formatSigned(income.amountCop, isPositive: true)}) de tus entradas confirmadas.',
-                                                    );
-                                                if (!confirmed ||
-                                                    !context.mounted) {
-                                                  return;
-                                                }
-                                                await ref
-                                                    .read(
-                                                      incomeControllerProvider
-                                                          .notifier,
-                                                    )
-                                                    .deleteIncome(income.id);
-                                                if (!context.mounted) return;
-                                                AppSnackbar.showSuccess(
-                                                  context,
-                                                  'Ingreso adicional eliminado correctamente',
-                                                );
-                                              },
+                                              onPressed: incomeState.isDeleting
+                                                  ? null
+                                                  : () async {
+                                                      final confirmed =
+                                                          await ConfirmDeleteDialog.show(
+                                                            context,
+                                                            title: '¿Eliminar ingreso adicional?',
+                                                            description:
+                                                                'Se eliminará "${income.reason}" (${CopFormatter.formatSigned(income.amountCop, isPositive: true)}) de tus entradas confirmadas.',
+                                                          );
+                                                      if (!confirmed ||
+                                                          !context.mounted) {
+                                                        return;
+                                                      }
+                                                      try {
+                                                        await ref
+                                                            .read(
+                                                              incomeControllerProvider
+                                                                  .notifier,
+                                                            )
+                                                            .deleteIncome(
+                                                              income.id,
+                                                            );
+                                                        if (!context.mounted) {
+                                                          return;
+                                                        }
+                                                        AppSnackbar.showSuccess(
+                                                          context,
+                                                          'Ingreso adicional eliminado correctamente',
+                                                        );
+                                                      } catch (_) {
+                                                        if (!context.mounted) {
+                                                          return;
+                                                        }
+                                                        AppSnackbar.showError(
+                                                          context,
+                                                          'No se pudo eliminar el ingreso adicional.',
+                                                        );
+                                                      }
+                                                    },
                                               icon: Icon(
                                                 Icons.delete_outline_rounded,
                                                 size: 18,
@@ -354,15 +392,22 @@ class DashboardScreen extends ConsumerWidget {
                                   title: Text(
                                     tx.description,
                                     style: theme.textTheme.titleSmall,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
                                   ),
                                   subtitle: Text(
-                                    '${tx.categoryOrOrigin} · ${DateFormatter.shortDateTime(tx.date)}${tx.isAutomatic ? ' · ⚡ Auto' : ''}',
+                                    '${tx.categoryOrOrigin} · ${DateFormatter.shortDateTime(tx.date)}${tx.isAutomatic ? ' · Auto' : ''}',
                                     style: theme.textTheme.bodyMedium,
                                   ),
-                                  trailing: MoneyAmountText(
-                                    amountCop: tx.amountCop,
-                                    isIncome: tx.isIncome,
-                                    showCurrency: false,
+                                  trailing: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      maxWidth: 120,
+                                    ),
+                                    child: MoneyAmountText(
+                                      amountCop: tx.amountCop,
+                                      isIncome: tx.isIncome,
+                                      showCurrency: false,
+                                    ),
                                   ),
                                   onTap: () =>
                                       context.go(AppRoutes.transactions),
@@ -417,32 +462,38 @@ class _GreetingHeader extends StatelessWidget {
             ],
           ),
         ),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: isNegative
-                ? semantic.expenseContainer
-                : semantic.incomeContainer,
-            borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                isNegative
-                    ? Icons.error_outline_rounded
-                    : Icons.verified_rounded,
-                size: 16,
-                color: isNegative ? semantic.expense : semantic.income,
+        const SizedBox(width: AppSpacing.xs),
+        Semantics(
+          label: isNegative ? 'Estado: déficit' : 'Estado: al día',
+          child: ExcludeSemantics(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: isNegative
+                    ? semantic.expenseContainer
+                    : semantic.incomeContainer,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
               ),
-              const SizedBox(width: 4),
-              Text(
-                isNegative ? 'Déficit' : 'Al día',
-                style: theme.textTheme.labelMedium?.copyWith(
-                  color: isNegative ? semantic.expense : semantic.income,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    isNegative
+                        ? Icons.error_outline_rounded
+                        : Icons.verified_rounded,
+                    size: 16,
+                    color: isNegative ? semantic.expense : semantic.income,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    isNegative ? 'Déficit' : 'Al día',
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: isNegative ? semantic.expense : semantic.income,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ],
@@ -453,11 +504,13 @@ class _GreetingHeader extends StatelessWidget {
 class _AutoDetectionBanner extends StatelessWidget {
   const _AutoDetectionBanner({
     required this.pendingCount,
+    required this.bridgeSupported,
     required this.onActivate,
     required this.onDismiss,
   });
 
   final int pendingCount;
+  final bool bridgeSupported;
   final VoidCallback onActivate;
   final VoidCallback onDismiss;
 
@@ -465,6 +518,12 @@ class _AutoDetectionBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final semantic = context.semanticColors;
+    final bodyText = pendingCount > 0
+        ? 'Tienes $pendingCount movimientos detectados por revisar.'
+        : bridgeSupported
+        ? 'En Android puedes revisar posibles compras de tus apps financieras.'
+        : 'La detección automática está disponible en Android. En web registra movimientos manualmente.';
+
     return Container(
       padding: const EdgeInsets.all(AppSpacing.md),
       decoration: BoxDecoration(
@@ -489,12 +548,7 @@ class _AutoDetectionBanner extends StatelessWidget {
                       style: theme.textTheme.titleSmall,
                     ),
                     const SizedBox(height: 2),
-                    Text(
-                      pendingCount > 0
-                          ? 'Tienes $pendingCount movimientos detectados por revisar.'
-                          : 'En Android puedes revisar posibles compras de tus apps financieras.',
-                      style: theme.textTheme.bodyMedium,
-                    ),
+                    Text(bodyText, style: theme.textTheme.bodyMedium),
                   ],
                 ),
               ),
@@ -510,7 +564,9 @@ class _AutoDetectionBanner extends StatelessWidget {
             child: TextButton.icon(
               onPressed: onActivate,
               icon: const Icon(Icons.arrow_forward_rounded, size: 18),
-              label: const Text('Revisar movimientos'),
+              label: Text(
+                bridgeSupported ? 'Revisar movimientos' : 'Ver detalle',
+              ),
             ),
           ),
         ],
@@ -575,9 +631,15 @@ class _HeroBalanceCard extends StatelessWidget {
               ),
             ],
           ),
-          Text(
-            balanceText,
-            style: theme.textTheme.displaySmall?.copyWith(color: Colors.white),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              balanceText,
+              style: theme.textTheme.displaySmall?.copyWith(
+                color: Colors.white,
+              ),
+            ),
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
@@ -587,16 +649,20 @@ class _HeroBalanceCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: AppSpacing.md),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
-            child: LinearProgressIndicator(
-              value: summary.committedPercent / 100,
-              minHeight: 8,
-              backgroundColor: Colors.white.withValues(alpha: 0.2),
-              valueColor: AlwaysStoppedAnimation<Color>(
-                summary.isNegative
-                    ? const Color(0xFFFCA5A5)
-                    : AppColors.secondarySoft,
+          Semantics(
+            label:
+                '${summary.committedPercent} por ciento comprometido de tus ingresos',
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+              child: LinearProgressIndicator(
+                value: summary.committedPercent / 100,
+                minHeight: 8,
+                backgroundColor: Colors.white.withValues(alpha: 0.2),
+                valueColor: AlwaysStoppedAnimation<Color>(
+                  summary.isNegative
+                      ? const Color(0xFFFCA5A5)
+                      : AppColors.secondarySoft,
+                ),
               ),
             ),
           ),
@@ -628,54 +694,68 @@ class _SeparateSummaryGrid extends StatelessWidget {
     String maskOrFormat(String formatted) =>
         hideBalances ? '\$ ••••••' : formatted;
 
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: AppSpacing.sm,
-      crossAxisSpacing: AppSpacing.sm,
-      childAspectRatio: 1.72,
-      children: [
-        _MetricCard(
-          label: 'Ingreso mensual',
-          value: maskOrFormat(CopFormatter.format(summary.monthlyIncomeCop)),
-          icon: Icons.account_balance_wallet_outlined,
-          accentColor: semantic.income,
-          bgColor: semantic.incomeContainer,
-        ),
-        _MetricCard(
-          label: 'Ingresos adicionales',
-          value: maskOrFormat(
-            CopFormatter.formatSigned(
-              summary.additionalIncomeCop,
-              isPositive: true,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 310;
+        return GridView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: narrow ? 1 : 2,
+            mainAxisSpacing: AppSpacing.sm,
+            crossAxisSpacing: AppSpacing.sm,
+            mainAxisExtent: narrow ? 88 : 96,
+          ),
+          children: [
+            _MetricCard(
+              label: 'Ingreso mensual',
+              value: maskOrFormat(
+                CopFormatter.format(summary.monthlyIncomeCop),
+              ),
+              icon: Icons.account_balance_wallet_outlined,
+              accentColor: semantic.income,
+              bgColor: semantic.incomeContainer,
             ),
-          ),
-          icon: Icons.add_circle_outline_rounded,
-          accentColor: semantic.income,
-          bgColor: semantic.incomeContainer,
-        ),
-        _MetricCard(
-          label: 'Gastos',
-          value: maskOrFormat(
-            CopFormatter.formatSigned(summary.expensesCop, isPositive: false),
-          ),
-          icon: Icons.arrow_circle_down_rounded,
-          accentColor: semantic.expense,
-          bgColor: semantic.expenseContainer,
-        ),
-        _MetricCard(
-          label: 'Disponible este mes',
-          value: maskOrFormat(CopFormatter.format(summary.availableCop)),
-          icon: summary.isNegative
-              ? Icons.warning_amber_rounded
-              : Icons.savings_outlined,
-          accentColor: summary.isNegative ? semantic.expense : semantic.income,
-          bgColor: summary.isNegative
-              ? semantic.expenseContainer
-              : semantic.incomeContainer,
-        ),
-      ],
+            _MetricCard(
+              label: 'Ingresos adicionales',
+              value: maskOrFormat(
+                CopFormatter.formatSigned(
+                  summary.additionalIncomeCop,
+                  isPositive: true,
+                ),
+              ),
+              icon: Icons.add_circle_outline_rounded,
+              accentColor: semantic.income,
+              bgColor: semantic.incomeContainer,
+            ),
+            _MetricCard(
+              label: 'Gastos',
+              value: maskOrFormat(
+                CopFormatter.formatSigned(
+                  summary.expensesCop,
+                  isPositive: false,
+                ),
+              ),
+              icon: Icons.arrow_circle_down_rounded,
+              accentColor: semantic.expense,
+              bgColor: semantic.expenseContainer,
+            ),
+            _MetricCard(
+              label: 'Disponible este mes',
+              value: maskOrFormat(CopFormatter.format(summary.availableCop)),
+              icon: summary.isNegative
+                  ? Icons.warning_amber_rounded
+                  : Icons.savings_outlined,
+              accentColor: summary.isNegative
+                  ? semantic.expense
+                  : semantic.income,
+              bgColor: summary.isNegative
+                  ? semantic.expenseContainer
+                  : semantic.incomeContainer,
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -759,35 +839,58 @@ class _QuickActionsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: AppSpacing.xs,
-      crossAxisSpacing: AppSpacing.xs,
-      childAspectRatio: 2.8,
-      children: [
-        OutlinedButton.icon(
-          onPressed: onExpense,
-          icon: const Icon(Icons.remove_circle_outline_rounded),
-          label: const Text('Registrar gasto'),
-        ),
-        OutlinedButton.icon(
-          onPressed: onIncome,
-          icon: const Icon(Icons.add_circle_outline_rounded),
-          label: const Text('Registrar ingreso'),
-        ),
-        OutlinedButton.icon(
-          onPressed: onAnalysis,
-          icon: const Icon(Icons.analytics_outlined),
-          label: const Text('Ver análisis'),
-        ),
-        OutlinedButton.icon(
-          onPressed: onBudgets,
-          icon: const Icon(Icons.account_balance_outlined),
-          label: const Text('Presupuestos'),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < 310;
+        return GridView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: narrow ? 1 : 2,
+            mainAxisSpacing: AppSpacing.xs,
+            crossAxisSpacing: AppSpacing.xs,
+            mainAxisExtent: 54,
+          ),
+          children: [
+            OutlinedButton.icon(
+              onPressed: onExpense,
+              icon: const Icon(Icons.remove_circle_outline_rounded),
+              label: const Text(
+                'Registrar gasto',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: onIncome,
+              icon: const Icon(Icons.add_circle_outline_rounded),
+              label: const Text(
+                'Registrar ingreso',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: onAnalysis,
+              icon: const Icon(Icons.analytics_outlined),
+              label: const Text(
+                'Ver análisis',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: onBudgets,
+              icon: const Icon(Icons.account_balance_outlined),
+              label: const Text(
+                'Presupuestos',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

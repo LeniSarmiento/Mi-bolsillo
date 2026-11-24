@@ -1,10 +1,9 @@
-import '../../../core/formatting/exports.dart';
-
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mi_bolsillo/core/formatting/cop_formatter.dart';
 import 'package:mi_bolsillo/core/formatting/date_formatter.dart';
+import 'package:mi_bolsillo/core/formatting/exports.dart';
 import 'package:mi_bolsillo/core/routing/app_routes.dart';
 import 'package:mi_bolsillo/core/theme/app_colors.dart';
 import 'package:mi_bolsillo/core/theme/app_spacing.dart';
@@ -44,6 +43,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _reload() async {
+    await Future.wait([
+      ref.read(transactionsControllerProvider.notifier).loadTransactions(),
+      ref.read(incomeControllerProvider.notifier).loadIncomes(),
+    ]);
   }
 
   List<TransactionItem> _applyFilters(List<TransactionItem> source) {
@@ -97,17 +103,22 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
     if (!confirmed || !mounted) return;
 
-    if (tx.linkedIncomeId != null) {
-      await ref
-          .read(incomeControllerProvider.notifier)
-          .deleteIncome(tx.linkedIncomeId!);
-    } else {
-      await ref
-          .read(transactionsControllerProvider.notifier)
-          .deleteTransaction(tx.id);
+    try {
+      if (tx.linkedIncomeId != null) {
+        await ref
+            .read(incomeControllerProvider.notifier)
+            .deleteIncome(tx.linkedIncomeId!);
+      } else {
+        await ref
+            .read(transactionsControllerProvider.notifier)
+            .deleteTransaction(tx.id);
+      }
+      if (!mounted) return;
+      AppSnackbar.showSuccess(context, 'Movimiento eliminado correctamente');
+    } catch (_) {
+      if (!mounted) return;
+      AppSnackbar.showError(context, 'No se pudo eliminar el movimiento.');
     }
-    if (!mounted) return;
-    AppSnackbar.showSuccess(context, 'Movimiento eliminado correctamente');
   }
 
   @override
@@ -121,6 +132,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     final filtered = _applyFilters(allItems);
 
     final isLoading = txState.isLoading || incomeState.isLoading;
+    final isDeleting = txState.isDeleting || incomeState.isDeleting;
+    final errorMessage = txState.errorMessage ?? incomeState.errorMessage;
 
     return Scaffold(
       appBar: AppBar(
@@ -128,7 +141,9 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         actions: [
           IconButton(
             tooltip: 'Exportar movimientos a CSV',
-            onPressed: () => exportLedger(context, filtered),
+            onPressed: filtered.isEmpty
+                ? null
+                : () => exportLedger(context, filtered),
             icon: const Icon(Icons.file_download_outlined),
           ),
         ],
@@ -136,7 +151,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       body: SafeArea(
         child: isLoading
             ? const LoadingStateView()
+            : errorMessage != null && allItems.isEmpty
+            ? ErrorStateView(message: errorMessage, onRetry: _reload)
             : SingleChildScrollView(
+                keyboardDismissBehavior:
+                    ScrollViewKeyboardDismissBehavior.onDrag,
                 padding: EdgeInsets.fromLTRB(
                   AppSpacing.pagePadding(context),
                   AppSpacing.sm,
@@ -151,6 +170,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (errorMessage != null) ...[
+                          InlineErrorBanner(
+                            message: errorMessage,
+                            onRetry: _reload,
+                          ),
+                          const SizedBox(height: AppSpacing.sm),
+                        ],
                         Card(
                           child: Padding(
                             padding: const EdgeInsets.all(AppSpacing.md),
@@ -165,17 +191,24 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                                         'Ingresos del mes',
                                         style: theme.textTheme.labelSmall,
                                       ),
-                                      Text(
-                                        CopFormatter.formatSigned(
-                                          summary.totalIncomeCop,
-                                          isPositive: true,
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerLeft,
+                                        child: Text(
+                                          CopFormatter.formatSigned(
+                                            summary.totalIncomeCop,
+                                            isPositive: true,
+                                          ),
+                                          style: theme.textTheme.titleMedium
+                                              ?.copyWith(
+                                                color: semantic.income,
+                                              ),
                                         ),
-                                        style: theme.textTheme.titleMedium
-                                            ?.copyWith(color: semantic.income),
                                       ),
                                     ],
                                   ),
                                 ),
+                                const SizedBox(width: AppSpacing.sm),
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.end,
@@ -184,13 +217,19 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                                         'Gastos del mes',
                                         style: theme.textTheme.labelSmall,
                                       ),
-                                      Text(
-                                        CopFormatter.formatSigned(
-                                          summary.expensesCop,
-                                          isPositive: false,
+                                      FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        alignment: Alignment.centerRight,
+                                        child: Text(
+                                          CopFormatter.formatSigned(
+                                            summary.expensesCop,
+                                            isPositive: false,
+                                          ),
+                                          style: theme.textTheme.titleMedium
+                                              ?.copyWith(
+                                                color: semantic.expense,
+                                              ),
                                         ),
-                                        style: theme.textTheme.titleMedium
-                                            ?.copyWith(color: semantic.expense),
                                       ),
                                     ],
                                   ),
@@ -274,7 +313,11 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                             },
                           )
                         else
-                          ..._buildGroupedItems(context, filtered),
+                          ..._buildGroupedItems(
+                            context,
+                            filtered,
+                            isDeleting: isDeleting,
+                          ),
                       ],
                     ),
                   ),
@@ -286,10 +329,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
   List<Widget> _buildGroupedItems(
     BuildContext context,
-    List<TransactionItem> items,
-  ) {
+    List<TransactionItem> items, {
+    required bool isDeleting,
+  }) {
     final theme = Theme.of(context);
     final semantic = context.semanticColors;
+    final now = DateTime.now();
+    final endOfToday = DateTime(now.year, now.month, now.day, 23, 59, 59);
     final widgets = <Widget>[];
     String? lastHeader;
 
@@ -304,6 +350,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
         );
         lastHeader = header;
       }
+
+      final isScheduledFuture = tx.date.isAfter(endOfToday);
 
       widgets.add(
         Padding(
@@ -393,31 +441,43 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                           icon: Icons.add_chart_rounded,
                           label: 'Ingreso adicional',
                         ),
+                      if (isScheduledFuture)
+                        const _MetaPill(
+                          icon: Icons.schedule_rounded,
+                          label: 'Programado',
+                        ),
                     ],
                   ),
                   const SizedBox(height: AppSpacing.xs),
-                  Wrap(
-                    alignment: WrapAlignment.end,
-                    spacing: 4,
-                    children: [
-                      TextButton.icon(
-                        onPressed: () => _editMovement(tx),
-                        icon: const Icon(Icons.edit_outlined, size: 18),
-                        label: const Text('Editar'),
-                      ),
-                      TextButton.icon(
-                        onPressed: () => _deleteMovement(tx),
-                        icon: Icon(
-                          Icons.delete_outline_rounded,
-                          size: 18,
-                          color: semantic.expense,
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Wrap(
+                      alignment: WrapAlignment.end,
+                      spacing: 4,
+                      children: [
+                        TextButton.icon(
+                          onPressed: isDeleting
+                              ? null
+                              : () => _editMovement(tx),
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: const Text('Editar'),
                         ),
-                        label: Text(
-                          'Eliminar',
-                          style: TextStyle(color: semantic.expense),
+                        TextButton.icon(
+                          onPressed: isDeleting
+                              ? null
+                              : () => _deleteMovement(tx),
+                          icon: Icon(
+                            Icons.delete_outline_rounded,
+                            size: 18,
+                            color: semantic.expense,
+                          ),
+                          label: Text(
+                            'Eliminar',
+                            style: TextStyle(color: semantic.expense),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ],
               ),

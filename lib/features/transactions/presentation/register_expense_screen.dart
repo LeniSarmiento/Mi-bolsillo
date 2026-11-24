@@ -34,6 +34,7 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
   late RecurrenceFrequency _recurrence;
   String? _formError;
   bool _saving = false;
+
   Future<void> _saveOnce() async {
     if (_saving) return;
     setState(() => _saving = true);
@@ -152,6 +153,9 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final summary = ref.watch(dashboardSummaryProvider);
+    final isBusy =
+        _saving ||
+        ref.watch(transactionsControllerProvider.select((s) => s.isSaving));
     final enteredAmount = CopFormatter.parseDigits(_amountController.text) ?? 0;
     final projectedAvailable = _isEditing
         ? summary.availableCop +
@@ -165,6 +169,7 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: EdgeInsets.all(AppSpacing.pagePadding(context)),
           child: Center(
             child: ConstrainedBox(
@@ -178,24 +183,37 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                   children: [
                     if (!_isEditing) ...[
                       SegmentedButton<bool>(
+                        showSelectedIcon: false,
                         segments: const [
                           ButtonSegment<bool>(
                             value: true,
                             icon: Icon(Icons.arrow_downward_rounded),
-                            label: Text('Registrar gasto'),
+                            label: Text(
+                              'Registrar gasto',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                           ButtonSegment<bool>(
                             value: false,
                             icon: Icon(Icons.arrow_upward_rounded),
-                            label: Text('Ingreso adicional'),
+                            label: Text(
+                              'Ingreso adicional',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         ],
                         selected: const {true},
-                        onSelectionChanged: (selection) {
-                          if (!selection.first) {
-                            context.pushReplacement(AppRoutes.registerIncome);
-                          }
-                        },
+                        onSelectionChanged: isBusy
+                            ? null
+                            : (selection) {
+                                if (!selection.first) {
+                                  context.pushReplacement(
+                                    AppRoutes.registerIncome,
+                                  );
+                                }
+                              },
                       ),
                       const SizedBox(height: AppSpacing.lg),
                     ],
@@ -205,7 +223,10 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                     ],
                     TextFormField(
                       controller: _amountController,
+                      enabled: !isBusy,
                       keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.next,
+                      scrollPadding: const EdgeInsets.only(bottom: 120),
                       inputFormatters: [CopFormatter.inputFormatter],
                       style: theme.textTheme.headlineMedium,
                       onChanged: (_) => setState(() {}),
@@ -236,7 +257,10 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                     const SizedBox(height: AppSpacing.md),
                     TextFormField(
                       controller: _descriptionController,
+                      enabled: !isBusy,
                       textCapitalization: TextCapitalization.sentences,
+                      textInputAction: TextInputAction.next,
+                      scrollPadding: const EdgeInsets.only(bottom: 120),
                       decoration: const InputDecoration(
                         labelText: 'Descripción',
                         hintText: 'Ej. Almuerzo ejecutivo',
@@ -260,8 +284,11 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                           avatar: Icon(cat.icon, size: 18),
                           label: Text(cat.label),
                           selected: selected,
-                          onSelected: (_) =>
-                              setState(() => _selectedCategory = cat.label),
+                          onSelected: isBusy
+                              ? null
+                              : (_) => setState(
+                                  () => _selectedCategory = cat.label,
+                                ),
                         );
                       }).toList(),
                     ),
@@ -269,7 +296,7 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                     Text('Fecha', style: theme.textTheme.titleMedium),
                     const SizedBox(height: AppSpacing.xs),
                     OutlinedButton.icon(
-                      onPressed: _pickDate,
+                      onPressed: isBusy ? null : _pickDate,
                       icon: const Icon(Icons.calendar_today_rounded),
                       label: Text(DateFormatter.shortDate(_selectedDate)),
                     ),
@@ -283,8 +310,11 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                         return ChoiceChip(
                           label: Text(channel),
                           selected: _selectedPaymentMethod == channel,
-                          onSelected: (_) =>
-                              setState(() => _selectedPaymentMethod = channel),
+                          onSelected: isBusy
+                              ? null
+                              : (_) => setState(
+                                  () => _selectedPaymentMethod = channel,
+                                ),
                         );
                       }).toList(),
                     ),
@@ -298,14 +328,18 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                         return ChoiceChip(
                           label: Text(freq.label),
                           selected: _recurrence == freq,
-                          onSelected: (_) => setState(() => _recurrence = freq),
+                          onSelected: isBusy
+                              ? null
+                              : (_) => setState(() => _recurrence = freq),
                         );
                       }).toList(),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     TextFormField(
                       controller: _noteController,
+                      enabled: !isBusy,
                       maxLines: 2,
+                      scrollPadding: const EdgeInsets.only(bottom: 120),
                       decoration: const InputDecoration(
                         labelText: 'Nota opcional',
                         hintText: 'Detalles adicionales...',
@@ -313,10 +347,20 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                     ),
                     const SizedBox(height: AppSpacing.xl),
                     FilledButton.icon(
-                      onPressed: _saving ? null : _saveOnce,
-                      icon: const Icon(Icons.check_rounded),
+                      onPressed: isBusy ? null : _saveOnce,
+                      icon: isBusy
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.check_rounded),
                       label: Text(
-                        _isEditing ? 'Actualizar gasto' : 'Guardar gasto',
+                        isBusy
+                            ? 'Guardando...'
+                            : _isEditing
+                            ? 'Actualizar gasto'
+                            : 'Guardar gasto',
                       ),
                     ),
                   ],

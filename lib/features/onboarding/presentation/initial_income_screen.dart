@@ -24,8 +24,10 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
   late final TextEditingController _amountController;
   PayFrequency _payFrequency = PayFrequency.biweekly;
   bool _autoRepeat = true;
+  bool _userEdited = false;
   String? _formError;
   bool _saving = false;
+
   Future<void> _saveOnce() async {
     if (_saving) return;
     setState(() => _saving = true);
@@ -48,7 +50,9 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
     super.initState();
     final initial = ref.read(settingsControllerProvider);
     _amountController = TextEditingController(
-      text: CopFormatter.formatDigits(initial.monthlyIncomeCop),
+      text: initial.monthlyIncomeCop > 0
+          ? CopFormatter.formatDigits(initial.monthlyIncomeCop)
+          : '',
     );
     _payFrequency = initial.payFrequency;
     _autoRepeat = initial.autoRepeatBaseIncome;
@@ -92,6 +96,21 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<UserSettings>(settingsControllerProvider, (previous, next) {
+      if (!_userEdited &&
+          previous?.monthlyIncomeCop == 0 &&
+          next.monthlyIncomeCop > 0 &&
+          _amountController.text.isEmpty) {
+        setState(() {
+          _amountController.text = CopFormatter.formatDigits(
+            next.monthlyIncomeCop,
+          );
+          _payFrequency = next.payFrequency;
+          _autoRepeat = next.autoRepeatBaseIncome;
+        });
+      }
+    });
+
     final theme = Theme.of(context);
     final semantic = context.semanticColors;
     final amount = _parsedAmount ?? 0;
@@ -101,6 +120,7 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
       appBar: AppBar(title: const Text('Configuración Inicial')),
       body: SafeArea(
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: EdgeInsets.all(AppSpacing.pagePadding(context)),
           child: Center(
             child: ConstrainedBox(
@@ -152,20 +172,26 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
                     const SizedBox(height: AppSpacing.lg),
                     TextFormField(
                       controller: _amountController,
+                      enabled: !_saving,
                       keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.done,
+                      scrollPadding: const EdgeInsets.only(bottom: 120),
                       inputFormatters: [CopFormatter.inputFormatter],
                       style: theme.textTheme.headlineMedium,
-                      onChanged: (_) => setState(() {}),
+                      onChanged: (_) => setState(() => _userEdited = true),
                       decoration: InputDecoration(
                         labelText: 'Ingreso mensual base (COP)',
+                        hintText: '2.400.000',
                         prefixText: '\$ ',
                         suffixText: 'COP',
                         suffixIcon: IconButton(
                           tooltip: 'Limpiar monto',
-                          onPressed: () {
-                            _amountController.clear();
-                            setState(() {});
-                          },
+                          onPressed: _saving
+                              ? null
+                              : () {
+                                  _amountController.clear();
+                                  setState(() => _userEdited = true);
+                                },
                           icon: const Icon(Icons.close_rounded),
                         ),
                       ),
@@ -216,9 +242,9 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
                         return ChoiceChip(
                           label: Text(freq.label),
                           selected: selected,
-                          onSelected: (_) {
-                            setState(() => _payFrequency = freq);
-                          },
+                          onSelected: _saving
+                              ? null
+                              : (_) => setState(() => _payFrequency = freq),
                         );
                       }).toList(),
                     ),
@@ -226,7 +252,9 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
                     Card(
                       child: SwitchListTile(
                         value: _autoRepeat,
-                        onChanged: (val) => setState(() => _autoRepeat = val),
+                        onChanged: _saving
+                            ? null
+                            : (val) => setState(() => _autoRepeat = val),
                         title: const Text('Repetir automáticamente'),
                         subtitle: const Text(
                           'Renueva tu ingreso base cada mes sin volver a digitarlo.',
@@ -236,8 +264,16 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
                     const SizedBox(height: AppSpacing.xl),
                     FilledButton.icon(
                       onPressed: _saving ? null : _saveOnce,
-                      icon: const Icon(Icons.check_rounded),
-                      label: const Text('Crear mi presupuesto'),
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.check_rounded),
+                      label: Text(
+                        _saving ? 'Guardando...' : 'Crear mi presupuesto',
+                      ),
                     ),
                   ],
                 ),

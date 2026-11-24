@@ -36,6 +36,7 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
   late RecurrenceFrequency _recurrenceFrequency;
   String? _formError;
   bool _saving = false;
+
   Future<void> _saveOnce() async {
     if (_saving) return;
     setState(() => _saving = true);
@@ -165,6 +166,9 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final semantic = context.semanticColors;
+    final isBusy =
+        _saving ||
+        ref.watch(incomeControllerProvider.select((s) => s.isSaving));
 
     return Scaffold(
       appBar: AppBar(
@@ -176,6 +180,7 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: EdgeInsets.all(AppSpacing.pagePadding(context)),
           child: Center(
             child: ConstrainedBox(
@@ -193,7 +198,10 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
                     ],
                     TextFormField(
                       controller: _amountController,
+                      enabled: !isBusy,
                       keyboardType: TextInputType.number,
+                      textInputAction: TextInputAction.next,
+                      scrollPadding: const EdgeInsets.only(bottom: 120),
                       inputFormatters: [CopFormatter.inputFormatter],
                       style: theme.textTheme.headlineMedium,
                       onChanged: (_) => setState(() {}),
@@ -218,22 +226,31 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
                       children: [
                         ActionChip(
                           label: const Text('+ \$50.000'),
-                          onPressed: () => _addQuickAmount(50000),
+                          onPressed: isBusy
+                              ? null
+                              : () => _addQuickAmount(50000),
                         ),
                         ActionChip(
                           label: const Text('+ \$150.000'),
-                          onPressed: () => _addQuickAmount(150000),
+                          onPressed: isBusy
+                              ? null
+                              : () => _addQuickAmount(150000),
                         ),
                         ActionChip(
                           label: const Text('+ \$300.000'),
-                          onPressed: () => _addQuickAmount(300000),
+                          onPressed: isBusy
+                              ? null
+                              : () => _addQuickAmount(300000),
                         ),
                       ],
                     ),
                     const SizedBox(height: AppSpacing.md),
                     TextFormField(
                       controller: _reasonController,
+                      enabled: !isBusy,
                       textCapitalization: TextCapitalization.sentences,
+                      textInputAction: TextInputAction.next,
+                      scrollPadding: const EdgeInsets.only(bottom: 120),
                       decoration: const InputDecoration(
                         labelText: 'Motivo del ingreso',
                         hintText: 'Ej. Horas extras fin de semana',
@@ -255,7 +272,9 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
                         return ChoiceChip(
                           label: Text(origin),
                           selected: _origin == origin,
-                          onSelected: (_) => setState(() => _origin = origin),
+                          onSelected: isBusy
+                              ? null
+                              : (_) => setState(() => _origin = origin),
                         );
                       }).toList(),
                     ),
@@ -266,7 +285,7 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
                     ),
                     const SizedBox(height: AppSpacing.xs),
                     OutlinedButton.icon(
-                      onPressed: _pickDate,
+                      onPressed: isBusy ? null : _pickDate,
                       icon: const Icon(Icons.calendar_today_rounded),
                       label: Text(DateFormatter.shortDate(_date)),
                     ),
@@ -283,15 +302,19 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
                         return ChoiceChip(
                           label: Text(channel),
                           selected: _receptionMethod == channel,
-                          onSelected: (_) =>
-                              setState(() => _receptionMethod = channel),
+                          onSelected: isBusy
+                              ? null
+                              : (_) =>
+                                    setState(() => _receptionMethod = channel),
                         );
                       }).toList(),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     TextFormField(
                       controller: _noteController,
+                      enabled: !isBusy,
                       maxLines: 2,
+                      scrollPadding: const EdgeInsets.only(bottom: 120),
                       decoration: const InputDecoration(
                         labelText: 'Nota (opcional)',
                         hintText: 'Cliente, proyecto o detalle adicional...',
@@ -306,8 +329,9 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
                           children: [
                             SwitchListTile(
                               value: _isRecurring,
-                              onChanged: (val) =>
-                                  setState(() => _isRecurring = val),
+                              onChanged: isBusy
+                                  ? null
+                                  : (val) => setState(() => _isRecurring = val),
                               title: const Text('Repetir este ingreso'),
                               subtitle: const Text(
                                 'Configura si este ingreso adicional es periódico.',
@@ -331,9 +355,12 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
                                           label: Text(freq.label),
                                           selected:
                                               _recurrenceFrequency == freq,
-                                          onSelected: (_) => setState(
-                                            () => _recurrenceFrequency = freq,
-                                          ),
+                                          onSelected: isBusy
+                                              ? null
+                                              : (_) => setState(
+                                                  () => _recurrenceFrequency =
+                                                      freq,
+                                                ),
                                         );
                                       }).toList(),
                                 ),
@@ -371,9 +398,21 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
                     ),
                     const SizedBox(height: AppSpacing.xl),
                     FilledButton.icon(
-                      onPressed: _saving ? null : _saveOnce,
-                      icon: const Icon(Icons.save_rounded),
-                      label: const Text('Guardar ingreso'),
+                      onPressed: isBusy ? null : _saveOnce,
+                      icon: isBusy
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.save_rounded),
+                      label: Text(
+                        isBusy
+                            ? 'Guardando...'
+                            : _isEditing
+                            ? 'Actualizar ingreso'
+                            : 'Guardar ingreso',
+                      ),
                     ),
                   ],
                 ),
