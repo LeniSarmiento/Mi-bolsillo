@@ -13,7 +13,7 @@ import 'package:mi_bolsillo/features/profile/domain/user_settings.dart';
 import 'package:mi_bolsillo/features/transactions/data/mock_transaction_repository.dart';
 import 'package:mi_bolsillo/features/transactions/domain/transaction_item.dart';
 
-Future<void> pumpFinance(WidgetTester tester, String route) async {
+Future<FinanceDatabase> pumpFinance(WidgetTester tester, String route) async {
   final db = FinanceDatabase(NativeDatabase.memory());
   addTearDown(db.close);
   final ledger = Ledger(db);
@@ -54,6 +54,7 @@ Future<void> pumpFinance(WidgetTester tester, String route) async {
     ),
   );
   await tester.pumpAndSettle();
+  return db;
 }
 
 class _OfflineBridge extends NotificationBridge {

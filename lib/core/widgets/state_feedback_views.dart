@@ -349,10 +349,14 @@ class BudgetStatusBadge extends StatelessWidget {
             children: [
               Icon(icon, size: 16, color: fg),
               const SizedBox(width: 4),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.labelMedium
-                    ?.copyWith(color: fg),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.labelMedium
+                      ?.copyWith(color: fg),
+                ),
               ),
             ],
           ),

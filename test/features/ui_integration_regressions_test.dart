@@ -89,8 +89,11 @@ void main() {
       for (final width in widths) {
         for (final route in routes) {
           await tester.binding.setSurfaceSize(Size(width, 800));
-          await pumpFinance(tester, route);
+          final database = await pumpFinance(tester, route);
           expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpAndSettle();
+          await database.close();
         }
       }
       await tester.binding.setSurfaceSize(null);
