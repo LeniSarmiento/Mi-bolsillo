@@ -203,6 +203,16 @@ void main() {
     expect(budgetProgress(b, rows, now).alertLevel.name, 'exhausted');
     b = await budgets.updateBudget(b.copyWith(limitCop: 200));
     expect((await budgets.getBudgets()).single.limitCop, 200);
+    final samePeriod = await budgets.addBudget(
+      b.copyWith(id: '', limitCop: 300),
+    );
+    expect(samePeriod.id, b.id);
+    expect((await budgets.getBudgets()).single.limitCop, 300);
+    final weekly = await budgets.addBudget(
+      b.copyWith(id: '', limitCop: 75, period: BudgetPeriod.weekly),
+    );
+    expect(await budgets.getBudgets(), hasLength(2));
+    await budgets.deleteBudget(weekly.id);
     await budgets.deleteBudget(b.id);
     expect(await budgets.getBudgets(), isEmpty);
   });

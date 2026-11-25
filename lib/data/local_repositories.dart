@@ -87,25 +87,52 @@ class LocalBudgets implements BudgetRepository {
             ),
           )
           .toList();
-  Future<BudgetItem> _save(BudgetItem b, bool update) async {
-    final id = b.id.isEmpty ? await ledger.newId() : b.id;
-    final row = SpendingLimit(
-      id: id,
-      category: b.category,
-      amount: b.limitCop,
-      period: b.period.name,
-      warn: b.alertAt80,
-      exhausted: b.alertAt100,
-    );
-    if (update) {
-      if (!await db.update(db.spendingLimits).replace(row)) {
-        throw StateError('Presupuesto inexistente');
-      }
-    } else {
-      await db.into(db.spendingLimits).insert(row);
-    }
-    return b.copyWith(id: id);
-  }
+  Future<BudgetItem> _save(BudgetItem b, bool update) =>
+      db.transaction(() async {
+        final sameCategoryAndPeriod =
+            await (db.select(db.spendingLimits)..where(
+                  (row) =>
+                      row.category.equals(b.category) &
+                      row.period.equals(b.period.name),
+                ))
+                .get();
+        final conflicting = sameCategoryAndPeriod
+            .where((row) => row.id != b.id)
+            .firstOrNull;
+        if (update && conflicting != null) {
+          throw const FormatException(
+            'Ya existe un presupuesto para esa categoría y periodo',
+          );
+        }
+
+        final existing = update ? null : sameCategoryAndPeriod.firstOrNull;
+        final id = existing?.id ?? (b.id.isEmpty ? await ledger.newId() : b.id);
+        final row = SpendingLimit(
+          id: id,
+          category: b.category,
+          amount: b.limitCop,
+          period: b.period.name,
+          warn: b.alertAt80,
+          exhausted: b.alertAt100,
+        );
+        if (update || existing != null) {
+          if (!await db.update(db.spendingLimits).replace(row)) {
+            throw StateError('Presupuesto inexistente');
+          }
+        } else {
+          await db.into(db.spendingLimits).insert(row);
+        }
+        if (existing != null && sameCategoryAndPeriod.length > 1) {
+          final duplicateIds = sameCategoryAndPeriod
+              .skip(1)
+              .map((duplicate) => duplicate.id)
+              .toList();
+          await (db.delete(
+            db.spendingLimits,
+          )..where((entry) => entry.id.isIn(duplicateIds))).go();
+        }
+        return b.copyWith(id: id);
+      });
 
   @override
   Future<BudgetItem> addBudget(BudgetItem b) => _save(b, false);
