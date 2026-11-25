@@ -21,7 +21,9 @@ val hasReleaseSigning = listOf(
 
 android {
     namespace = "com.mibolsillo.app"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_local_notifications 23 and AndroidX Core 1.19 require API 37.
+    // targetSdk remains managed by Flutter, so this does not opt into new runtime behavior.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

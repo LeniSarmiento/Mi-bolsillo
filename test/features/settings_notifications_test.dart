@@ -104,4 +104,19 @@ void main() {
       isFalse,
     );
   });
+
+  test('restablecer ajustes cancela el recordatorio activo', () async {
+    notifications.permissionGranted = true;
+    final controller = container.read(settingsControllerProvider.notifier);
+    await Future<void>.delayed(Duration.zero);
+    await controller.toggleDailyReminder(true);
+
+    await controller.resetDefaults();
+
+    expect(
+      container.read(settingsControllerProvider).dailyReminderEnabled,
+      isFalse,
+    );
+    expect(notifications.scheduledValues, [true, false]);
+  });
 }

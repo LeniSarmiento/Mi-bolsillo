@@ -35,4 +35,4 @@ jobs:
         run: flutter build apk --debug
       - name: Test Android native code
         working-directory: android
-        run: ./gradlew testDebugUnitTest
+        run: ./gradlew :app:testDebugUnitTest

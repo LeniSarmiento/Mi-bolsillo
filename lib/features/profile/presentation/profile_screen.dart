@@ -69,6 +69,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
         await bridge.erase();
         await db.erase();
       });
+      try {
+        await ref.read(appNotificationsProvider).syncDailyReminder(false);
+      } catch (_) {
+        // The local wipe succeeded even if Android cannot cancel now.
+      }
       if (!mounted) return;
       ref.invalidate(incomeControllerProvider);
       ref.invalidate(transactionsControllerProvider);
