@@ -68,6 +68,7 @@ class TransactionItem {
     this.status = MovementStatus.confirmed,
     this.source = MovementSource.manual,
     this.parentId,
+    this.nextOccurrence,
   });
 
   final String id;
@@ -85,6 +86,7 @@ class TransactionItem {
   final MovementStatus status;
   final MovementSource source;
   final String? parentId;
+  final DateTime? nextOccurrence;
 
   bool get isIncome => type != TransactionType.expense;
 
@@ -107,6 +109,7 @@ class TransactionItem {
       status: status,
       source: source,
       parentId: parentId,
+      nextOccurrence: nextOccurrence,
       id: id ?? this.id,
       description: description ?? this.description,
       amountCop: amountCop ?? this.amountCop,

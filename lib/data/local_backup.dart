@@ -15,7 +15,7 @@ class LocalBackup {
   Future<Uint8List> export() => db.transaction(() async {
     final data = <String, dynamic>{
       'application': 'mi_bolsillo',
-      'formatVersion': 1,
+      'formatVersion': 2,
       'schemaVersion': 3,
       'exportedAt': DateTime.now().toUtc().toIso8601String(),
       'categories': (await db.select(db.categories).get())
@@ -48,7 +48,7 @@ class LocalBackup {
       if (bytes.length > maxBytes) throw const FormatException();
       final data = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
       if (data['application'] != 'mi_bolsillo' ||
-          data['formatVersion'] != 1 ||
+          !const [1, 2].contains(data['formatVersion']) ||
           data['schemaVersion'] != 3) {
         throw const FormatException();
       }
@@ -91,6 +91,41 @@ class LocalBackup {
         return m;
       });
       require(movements.map((m) => m.id).toSet().length == movements.length);
+      final byId = {for (final m in movements) m.id: m};
+      final salaryMonths = <String>{};
+      var activeSalaries = 0;
+      for (final m in movements) {
+        if (m.kind == 'baseIncome') {
+          require(m.status == 'confirmed' && m.category == 'Salario');
+          require(m.occurred.day == 1);
+          require(m.frequency == 'none' || m.frequency == 'monthly');
+          require(salaryMonths.add('${m.occurred.year}-${m.occurred.month}'));
+          if (m.nextDue != null) {
+            activeSalaries++;
+            require(m.nextDue!.day == 1);
+          }
+        }
+        if (m.status == 'pending') {
+          require(
+            m.kind == 'expense' &&
+                m.source == 'notification' &&
+                m.parent == null &&
+                m.frequency == 'none',
+          );
+        }
+        if (m.nextDue != null) require(m.status == 'confirmed');
+        final parent = byId[m.parent];
+        // An orphan is legitimate after a user deletes a template. A present
+        // parent must be a root of the same kind, never a cycle or another type.
+        if (parent != null) {
+          require(
+            parent.parent == null &&
+                parent.kind == m.kind &&
+                parent.status == 'confirmed',
+          );
+        }
+      }
+      require(activeSalaries <= 1);
       final schedules = movements
           .where((m) => m.parent != null && m.scheduled != null)
           .toList();

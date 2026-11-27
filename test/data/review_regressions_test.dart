@@ -163,9 +163,15 @@ void main() {
     await incomes.updateAdditionalIncome(
       occurrence.copyWith(amountCop: 120000),
     );
-    await ledger.save(template.copyWith(amountCop: 150000), update: true);
+    final original = (await incomes.getAdditionalIncomes()).singleWhere(
+      (i) => i.id == template.id,
+    );
+    await incomes.reviseFuture(
+      original.copyWith(amountCop: 150000, date: DateTime(2026, 3, 15)),
+    );
     now = DateTime(2026, 3, 15);
     final entries = await incomes.getAdditionalIncomes();
+    expect(entries.where((i) => i.date.month == 1).single.amountCop, 100000);
     expect(entries.where((i) => i.date.month == 3).single.amountCop, 150000);
     expect(entries.where((i) => i.date.month == 2).single.amountCop, 120000);
     await ledger.generateDue();

@@ -11,10 +11,12 @@ import '../features/profile/domain/user_settings.dart';
 import '../features/profile/domain/settings_repository.dart';
 import '../features/transactions/domain/transaction_item.dart';
 import '../features/transactions/domain/transaction_repository.dart';
+import '../features/transactions/domain/recurrence_repository.dart';
 import 'finance_database.dart';
 import 'ledger.dart';
 
-class LocalTransactions implements TransactionRepository {
+class LocalTransactions
+    implements TransactionRepository, RecurrenceRepository<TransactionItem> {
   LocalTransactions(this.ledger);
   final Ledger ledger;
   @override
@@ -27,7 +29,12 @@ class LocalTransactions implements TransactionRepository {
       ledger.save(item);
   @override
   Future<TransactionItem> updateTransaction(TransactionItem item) =>
-      ledger.save(item, update: true);
+      ledger.editOccurrence(item);
+  @override
+  Future<TransactionItem> reviseFuture(TransactionItem item) =>
+      ledger.reviseFuture(item);
+  @override
+  Future<void> stopFuture(String templateId) => ledger.stopFuture(templateId);
   @override
   Future<void> deleteTransaction(String id) async {
     final entry = await (ledger.db.select(
@@ -49,20 +56,37 @@ class LocalTransactions implements TransactionRepository {
   Future<void> resetToMockDefaults() => clearAll();
 }
 
-class LocalIncomes implements IncomeRepository {
+class LocalIncomes
+    implements IncomeRepository, RecurrenceRepository<AdditionalIncome> {
   LocalIncomes(this.ledger);
   final Ledger ledger;
   @override
   Future<List<AdditionalIncome>> getAdditionalIncomes() async =>
       (await ledger.confirmed(incomes: true)).map(ledger.asIncome).toList();
-  Future<AdditionalIncome> _save(AdditionalIncome i, bool update) async {
-    final tx = await ledger.save(ledger.incomeEntry(i), update: update);
-    return ledger.asIncome(
-      await (ledger.db.select(
-        ledger.db.movements,
-      )..where((m) => m.id.equals(tx.id))).getSingle(),
-    );
-  }
+  Future<AdditionalIncome> _save(AdditionalIncome i, bool update) =>
+      ledger.db.transaction(() async {
+        final tx = update
+            ? await ledger.editOccurrence(ledger.incomeEntry(i))
+            : await ledger.save(ledger.incomeEntry(i));
+        return ledger.asIncome(
+          await (ledger.db.select(
+            ledger.db.movements,
+          )..where((m) => m.id.equals(tx.id))).getSingle(),
+        );
+      });
+
+  @override
+  Future<AdditionalIncome> reviseFuture(AdditionalIncome income) =>
+      ledger.db.transaction(() async {
+        final saved = await ledger.reviseFuture(ledger.incomeEntry(income));
+        return ledger.asIncome(
+          await (ledger.db.select(
+            ledger.db.movements,
+          )..where((m) => m.id.equals(saved.id))).getSingle(),
+        );
+      });
+  @override
+  Future<void> stopFuture(String templateId) => ledger.stopFuture(templateId);
 
   @override
   Future<AdditionalIncome> addAdditionalIncome(AdditionalIncome income) =>

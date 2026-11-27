@@ -65,7 +65,11 @@ class Ledger {
                   ),
               mode: InsertMode.insertOrIgnore,
             );
-        date = nextDate(date, freq, template.occurred.day);
+        date = nextDate(
+          date,
+          freq,
+          (template.scheduled ?? template.occurred).day,
+        );
       }
       await (db.update(db.movements)..where((m) => m.id.equals(template.id)))
           .write(MovementsCompanion(nextDue: Value(date)));
@@ -93,7 +97,9 @@ class Ledger {
     TransactionItem t, {
     bool update = false,
   }) => db.transaction(() async {
-    if (t.amountCop <= 0 || t.description.trim().isEmpty) {
+    if (t.amountCop <= 0 ||
+        t.amountCop > 9007199254740991 ||
+        t.description.trim().isEmpty) {
       throw const FormatException('Revisa el monto y la descripción');
     }
     final id = t.id.isEmpty ? await newId() : t.id;
@@ -110,11 +116,18 @@ class Ledger {
         previous == null ||
         previous.frequency != t.recurrence.name ||
         dayOf(previous.occurred) != dayOf(t.date);
-    final next = t.recurrence == RecurrenceFrequency.none
+    var next = t.recurrence == RecurrenceFrequency.none
         ? null
         : scheduleChanged
         ? nextDate(t.date, t.recurrence, t.date.day)
         : previous.nextDue;
+    // Editing a date/frequency never creates newly confirmed backdated entries.
+    // Creation may intentionally catch up a user-specified historical series.
+    if (update && scheduleChanged && next != null) {
+      while (!next!.isAfter(dayOf(now()))) {
+        next = nextDate(next, t.recurrence, t.date.day);
+      }
+    }
     final row = MovementsCompanion.insert(
       id: id,
       kind: t.type.name,
@@ -135,7 +148,9 @@ class Ledger {
       parent: t.type == TransactionType.baseIncome
           ? const Value(null)
           : const Value.absent(),
-      scheduled: t.type == TransactionType.baseIncome
+      scheduled:
+          t.type == TransactionType.baseIncome ||
+              (previous?.parent == null && scheduleChanged)
           ? const Value(null)
           : const Value.absent(),
     );
@@ -147,6 +162,140 @@ class Ledger {
     return t.copyWith(id: id);
   });
 
+  Future<Movement> _movement(String id) async {
+    final row = await (db.select(
+      db.movements,
+    )..where((m) => m.id.equals(id))).getSingleOrNull();
+    if (row == null) {
+      throw const FormatException('El movimiento cambió. Recarga la lista.');
+    }
+    return row;
+  }
+
+  /// A series is represented by a dated template. Forking schedules a new
+  /// future template and freezes the previous one without rewriting its money
+  /// or date. All historical members keep a link to the active template.
+  Future<TransactionItem> _fork(
+    Movement original,
+    TransactionItem future, {
+    bool retainOriginal = false,
+  }) async {
+    final id = await newId();
+    final replacement = TransactionItem(
+      id: id,
+      description: future.description,
+      amountCop: future.amountCop,
+      type: future.type,
+      categoryOrOrigin: future.categoryOrOrigin,
+      date: dayOf(future.date),
+      paymentMethod: future.paymentMethod,
+      isAutomatic: false,
+      recurrence: future.recurrence,
+      note: future.note,
+      source: MovementSource.recurring,
+    );
+    await save(replacement);
+    final sameSchedule =
+        original.frequency == future.recurrence.name &&
+        (dayOf(future.date) == dayOf(original.nextDue!) ||
+            dayOf(future.date) == dayOf(original.occurred));
+    final anchor = sameSchedule
+        ? original.scheduled ?? original.occurred
+        : dayOf(future.date);
+    await (db.update(db.movements)..where((m) => m.id.equals(id))).write(
+      MovementsCompanion(
+        scheduled: Value(anchor),
+        nextDue: Value(nextDate(future.date, future.recurrence, anchor.day)),
+      ),
+    );
+    await (db.update(db.movements)..where((m) => m.parent.equals(original.id)))
+        .write(MovementsCompanion(parent: Value(id)));
+    if (!retainOriginal && dayOf(original.occurred).isAfter(dayOf(now()))) {
+      await remove(original.id);
+    } else {
+      await (db.update(
+        db.movements,
+      )..where((m) => m.id.equals(original.id))).write(
+        MovementsCompanion(
+          parent: Value(id),
+          scheduled: const Value(null),
+          frequency: const Value('none'),
+          nextDue: const Value(null),
+          updated: Value(now()),
+        ),
+      );
+    }
+    return asTransaction(await _movement(id));
+  }
+
+  Future<TransactionItem> reviseFuture(TransactionItem future) =>
+      db.transaction(() async {
+        if (!dayOf(future.date).isAfter(dayOf(now()))) {
+          throw const FormatException(
+            'La primera repetición debe ser posterior a hoy',
+          );
+        }
+        if (future.recurrence == RecurrenceFrequency.none) {
+          throw const FormatException(
+            'Elige una frecuencia o detén las próximas repeticiones',
+          );
+        }
+        await generateDue();
+        final original = await _movement(future.id);
+        if (original.kind == 'baseIncome' ||
+            original.kind != future.type.name ||
+            original.parent != null ||
+            original.frequency == 'none') {
+          throw const FormatException(
+            'La programación cambió. Recarga los movimientos.',
+          );
+        }
+        return _fork(original, future);
+      });
+
+  Future<void> stopFuture(String id) => db.transaction(() async {
+    await generateDue();
+    final original = await _movement(id);
+    if (original.kind == 'baseIncome' ||
+        original.parent != null ||
+        original.frequency == 'none') {
+      throw const FormatException(
+        'La programación cambió. Recarga los movimientos.',
+      );
+    }
+    if (dayOf(original.occurred).isAfter(dayOf(now()))) {
+      await remove(id);
+    } else {
+      await (db.update(db.movements)..where((m) => m.id.equals(id))).write(
+        MovementsCompanion(
+          frequency: const Value('none'),
+          nextDue: const Value(null),
+          updated: Value(now()),
+        ),
+      );
+    }
+  });
+
+  Future<TransactionItem> editOccurrence(
+    TransactionItem item,
+  ) => db.transaction(() async {
+    await generateDue();
+    final original = await _movement(item.id);
+    if (original.kind != item.type.name || original.kind == 'baseIncome') {
+      throw const FormatException('Modifica el ingreso base desde Perfil');
+    }
+    var edited = item;
+    if (original.frequency != 'none') {
+      // Keep this occurrence even when it is itself scheduled in the future.
+      // The successor begins at the old nextDue, preserving its anchor date.
+      final future = asTransaction(original).copyWith(date: original.nextDue!);
+      await _fork(original, future, retainOriginal: true);
+      edited = item.copyWith(recurrence: RecurrenceFrequency.none);
+    }
+    await save(edited, update: true);
+    return asTransaction(await _movement(item.id));
+  });
+
   Future<void> remove(String id) =>
       (db.delete(db.movements)..where((m) => m.id.equals(id))).go();
   TransactionItem asTransaction(Movement m) => TransactionItem(
@@ -155,6 +304,7 @@ class Ledger {
     status: MovementStatus.values.byName(m.status),
     source: MovementSource.values.byName(m.source),
     parentId: m.parent,
+    nextOccurrence: m.nextDue,
     id: m.id,
     description: m.description,
     amountCop: m.amount,
