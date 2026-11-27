@@ -49,15 +49,23 @@ class LocalDetection
       final items = await bridge.peek();
       for (final v in items) {
         final id = v['id'] as String;
+        final legacy = v['legacyId'];
+        final aliases = {id, if (legacy is String && legacy.isNotEmpty) legacy};
         final already = await (db.select(
           db.detectionReceipts,
-        )..where((r) => r.fingerprint.equals(id))).getSingleOrNull();
-        if (already != null) continue;
-        await db
-            .into(db.detectionReceipts)
-            .insert(
-              DetectionReceipt(fingerprint: id, sourceApp: v['app'] as String),
-            );
+        )..where((r) => r.fingerprint.isIn(aliases))).get();
+        for (final alias in aliases) {
+          await db
+              .into(db.detectionReceipts)
+              .insert(
+                DetectionReceipt(
+                  fingerprint: alias,
+                  sourceApp: v['app'] as String,
+                ),
+                mode: InsertMode.insertOrIgnore,
+              );
+        }
+        if (already.isNotEmpty) continue;
         await db
             .into(db.movements)
             .insert(

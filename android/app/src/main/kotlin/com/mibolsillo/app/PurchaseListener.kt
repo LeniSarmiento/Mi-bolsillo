@@ -19,13 +19,15 @@ internal object DetectionQueue {
         if (!optedIn(c) || store.contains(p.id) || store.all.size >= 513) return
         val data = JSONObject().put("id", p.id).put("merchant", p.merchant).put("amount", p.amount)
             .put("date", p.date).put("app", p.app)
+        p.legacyId?.let { data.put("legacyId", it) }
         if (store.edit().putString(p.id, data.toString()).commit()) onArrival?.invoke()
     }
 
     fun peek(c: Context) = prefs(c).all.values.filterIsInstance<String>().map {
         val data = JSONObject(it)
         mapOf("id" to data.getString("id"), "merchant" to data.getString("merchant"),
-            "amount" to data.getLong("amount"), "date" to data.getLong("date"), "app" to data.getString("app"))
+            "amount" to data.getLong("amount"), "date" to data.getLong("date"), "app" to data.getString("app"),
+            "legacyId" to data.optString("legacyId", ""))
     }
 
     fun ack(c: Context, keys: List<String>) {
