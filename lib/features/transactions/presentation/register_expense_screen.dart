@@ -7,15 +7,21 @@ import 'package:mi_bolsillo/core/routing/app_routes.dart';
 import 'package:mi_bolsillo/core/theme/app_spacing.dart';
 import 'package:mi_bolsillo/core/widgets/app_snackbar.dart';
 import 'package:mi_bolsillo/core/widgets/state_feedback_views.dart';
+import 'package:mi_bolsillo/core/widgets/confirm_delete_dialog.dart';
 import 'package:mi_bolsillo/features/dashboard/application/dashboard_summary_provider.dart';
 import 'package:mi_bolsillo/features/transactions/application/transactions_controller.dart';
 import 'package:mi_bolsillo/features/transactions/domain/transaction_item.dart';
 
 /// Screen 4: Registrar gasto (y edición de movimiento existente).
 class RegisterExpenseScreen extends ConsumerStatefulWidget {
-  const RegisterExpenseScreen({super.key, this.existingTransaction});
+  const RegisterExpenseScreen({
+    super.key,
+    this.existingTransaction,
+    this.futureOnly = false,
+  });
 
   final TransactionItem? existingTransaction;
+  final bool futureOnly;
 
   @override
   ConsumerState<RegisterExpenseScreen> createState() =>
@@ -53,6 +59,11 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
   }
 
   bool get _isEditing => widget.existingTransaction != null;
+  bool get _occurrenceOnly =>
+      !widget.futureOnly &&
+      _isEditing &&
+      (widget.existingTransaction!.parentId != null ||
+          widget.existingTransaction!.recurrence != RecurrenceFrequency.none);
 
   @override
   void initState() {
@@ -67,7 +78,9 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
     _selectedPaymentMethod =
         tx?.paymentMethod ?? PaymentMethods.expenseChannels.first;
     _selectedDate = tx?.date ?? DateTime.now();
-    _recurrence = tx?.recurrence ?? RecurrenceFrequency.none;
+    _recurrence = _occurrenceOnly
+        ? RecurrenceFrequency.none
+        : tx?.recurrence ?? RecurrenceFrequency.none;
   }
 
   @override
@@ -79,11 +92,15 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
   }
 
   Future<void> _pickDate() async {
+    final today = DateTime.now();
+    final tomorrow = DateTime(today.year, today.month, today.day + 1);
     final picked = await showDatePicker(
       context: context,
-      initialDate: _selectedDate,
-      firstDate: DateTime(2023),
-      lastDate: DateTime(2030),
+      initialDate: widget.futureOnly && _selectedDate.isBefore(tomorrow)
+          ? tomorrow
+          : _selectedDate,
+      firstDate: widget.futureOnly ? tomorrow : DateTime(2023),
+      lastDate: DateTime(today.year + 10, 12, 31),
       locale: const Locale('es', 'CO'),
     );
     if (picked != null) {
@@ -100,6 +117,16 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
   }
 
   Future<void> _save() async {
+    final today = DateTime.now();
+    if (widget.futureOnly &&
+        !_selectedDate.isAfter(
+          DateTime(today.year, today.month, today.day, 23, 59, 59, 999),
+        )) {
+      setState(
+        () => _formError = 'Elige una primera repetición posterior a hoy.',
+      );
+      return;
+    }
     final amount = CopFormatter.parseDigits(_amountController.text);
     final description = _descriptionController.text.trim();
     if (!(_formKey.currentState?.validate() ?? false) ||
@@ -126,6 +153,7 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
           recurrence: _recurrence,
           note: _noteController.text.trim(),
         ),
+        futureOnly: widget.futureOnly,
       );
     } else {
       await controller.addExpense(
@@ -142,11 +170,43 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
     if (!mounted) return;
     AppSnackbar.showSuccess(
       context,
-      _isEditing
+      widget.futureOnly
+          ? 'Próximas repeticiones actualizadas'
+          : _isEditing
           ? 'Movimiento actualizado correctamente'
           : 'Gasto guardado correctamente (${CopFormatter.format(amount)})',
     );
     context.pop();
+  }
+
+  Future<void> _stopFuture() async {
+    if (_saving) return;
+    final accepted = await ConfirmDeleteDialog.show(
+      context,
+      title: '¿Detener próximas repeticiones?',
+      description: 'Se cancelarán los próximos movimientos de esta serie. El historial anterior se conserva.',
+      confirmLabel: 'Detener',
+    );
+    if (!accepted || !mounted || _saving) return;
+    setState(() => _saving = true);
+    try {
+      await ref
+          .read(transactionsControllerProvider.notifier)
+          .stopFuture(widget.existingTransaction!.id);
+      if (mounted) {
+        AppSnackbar.showSuccess(context, 'Próximas repeticiones detenidas');
+        context.pop();
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _formError =
+              'No se pudo detener la programación. Recarga los movimientos.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -167,7 +227,13 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_isEditing ? 'Editar gasto' : 'Registrar gasto'),
+        title: Text(
+          widget.futureOnly
+              ? 'Próximos gastos'
+              : _isEditing
+              ? 'Editar gasto'
+              : 'Registrar gasto',
+        ),
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -183,6 +249,10 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (widget.futureOnly)
+                      const Text(
+                        'Los cambios empiezan en la primera fecha indicada. Los gastos anteriores no cambian.',
+                      ),
                     if (!_isEditing) ...[
                       SegmentedButton<bool>(
                         showSelectedIcon: false,
@@ -248,7 +318,9 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                     ),
                     const SizedBox(height: AppSpacing.xs),
                     Text(
-                      'Disponible estimado después del gasto: ${CopFormatter.format(projectedAvailable)}',
+                      widget.futureOnly
+                          ? 'Esta programación no cambia el disponible de hoy.'
+                          : 'Disponible estimado después del gasto: ${CopFormatter.format(projectedAvailable)}',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w600,
                         color: projectedAvailable < 0
@@ -295,7 +367,10 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                       }).toList(),
                     ),
                     const SizedBox(height: AppSpacing.lg),
-                    Text('Fecha', style: theme.textTheme.titleMedium),
+                    Text(
+                      widget.futureOnly ? 'Primera repetición' : 'Fecha',
+                      style: theme.textTheme.titleMedium,
+                    ),
                     const SizedBox(height: AppSpacing.xs),
                     OutlinedButton.icon(
                       onPressed: isBusy ? null : _pickDate,
@@ -322,7 +397,7 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     Text('Recurrencia', style: theme.textTheme.titleMedium),
-                    if (widget.existingTransaction?.parentId != null)
+                    if (_occurrenceOnly)
                       const Text(
                         'Editas solo este movimiento. Para cambiar la serie, elige Próximas repeticiones desde Movimientos.',
                       ),
@@ -330,17 +405,22 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                     Wrap(
                       spacing: AppSpacing.xs,
                       runSpacing: AppSpacing.xs,
-                      children: RecurrenceFrequency.values.map((freq) {
-                        return ChoiceChip(
-                          label: Text(freq.label),
-                          selected: _recurrence == freq,
-                          onSelected:
-                              isBusy ||
-                                  widget.existingTransaction?.parentId != null
-                              ? null
-                              : (_) => setState(() => _recurrence = freq),
-                        );
-                      }).toList(),
+                      children: RecurrenceFrequency.values
+                          .where(
+                            (freq) =>
+                                !widget.futureOnly ||
+                                freq != RecurrenceFrequency.none,
+                          )
+                          .map((freq) {
+                            return ChoiceChip(
+                              label: Text(freq.label),
+                              selected: _recurrence == freq,
+                              onSelected: isBusy || _occurrenceOnly
+                                  ? null
+                                  : (_) => setState(() => _recurrence = freq),
+                            );
+                          })
+                          .toList(),
                     ),
                     const SizedBox(height: AppSpacing.md),
                     TextFormField(
@@ -366,11 +446,18 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                       label: Text(
                         isBusy
                             ? 'Guardando...'
+                            : widget.futureOnly
+                            ? 'Guardar próximas repeticiones'
                             : _isEditing
                             ? 'Actualizar gasto'
                             : 'Guardar gasto',
                       ),
                     ),
+                    if (widget.futureOnly)
+                      TextButton(
+                        onPressed: isBusy ? null : _stopFuture,
+                        child: const Text('Detener próximas repeticiones'),
+                      ),
                   ],
                 ),
               ),

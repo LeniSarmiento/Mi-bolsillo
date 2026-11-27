@@ -1,4 +1,5 @@
 import '../../features/budgets/domain/budget_item.dart';
+import '../../features/transactions/domain/recurrence_repository.dart';
 
 import 'package:material_ui/material_ui.dart';
 import 'package:go_router/go_router.dart';
@@ -74,6 +75,12 @@ GoRouter createAppRouter({String initialLocation = AppRoutes.welcome}) {
       GoRoute(
         path: AppRoutes.registerExpense,
         builder: (context, state) {
+          if (state.extra case FutureSeriesEdit<TransactionItem>(:final item)) {
+            return RegisterExpenseScreen(
+              existingTransaction: item,
+              futureOnly: true,
+            );
+          }
           final existing = state.extra is TransactionItem
               ? state.extra as TransactionItem
               : null;
@@ -83,6 +90,11 @@ GoRouter createAppRouter({String initialLocation = AppRoutes.welcome}) {
       GoRoute(
         path: AppRoutes.registerIncome,
         builder: (context, state) {
+          if (state.extra case FutureSeriesEdit<AdditionalIncome>(
+            :final item,
+          )) {
+            return RegisterIncomeScreen(existingIncome: item, futureOnly: true);
+          }
           final existing = state.extra is AdditionalIncome
               ? state.extra as AdditionalIncome
               : null;

@@ -4,6 +4,8 @@ import 'package:mi_bolsillo/features/income/domain/additional_income.dart';
 import 'package:mi_bolsillo/features/transactions/domain/transaction_item.dart';
 import 'package:mi_bolsillo/core/errors/finance_failure.dart';
 
+import '../../transactions/domain/recurrence_repository.dart';
+
 class IncomeState {
   const IncomeState({
     this.items = const [],
@@ -95,12 +97,21 @@ class IncomeController extends Notifier<IncomeState> {
     }
   }
 
-  Future<void> updateIncome(AdditionalIncome income) async {
+  Future<void> updateIncome(
+    AdditionalIncome income, {
+    bool futureOnly = false,
+  }) async {
     if (state.isSaving || state.isDeleting) return;
     state = state.copyWith(isSaving: true, clearError: true);
     final repo = ref.read(incomeRepositoryProvider);
     try {
-      await repo.updateAdditionalIncome(income);
+      if (futureOnly) {
+        await (repo as RecurrenceRepository<AdditionalIncome>).reviseFuture(
+          income,
+        );
+      } else {
+        await repo.updateAdditionalIncome(income);
+      }
       await loadIncomes();
       state = state.copyWith(isSaving: false);
     } catch (error, stackTrace) {
@@ -121,6 +132,22 @@ class IncomeController extends Notifier<IncomeState> {
     } catch (error, stackTrace) {
       final failure = FinanceFailure.from(error);
       state = state.copyWith(isDeleting: false, errorMessage: failure.message);
+      Error.throwWithStackTrace(failure, stackTrace);
+    }
+  }
+
+  Future<void> stopFuture(String id) async {
+    if (state.isSaving || state.isDeleting) return;
+    state = state.copyWith(isSaving: true, clearError: true);
+    try {
+      await (ref.read(
+        incomeRepositoryProvider,
+      ) as RecurrenceRepository<AdditionalIncome>).stopFuture(id);
+      await loadIncomes();
+      state = state.copyWith(isSaving: false);
+    } catch (error, stackTrace) {
+      final failure = FinanceFailure.from(error);
+      state = state.copyWith(isSaving: false, errorMessage: failure.message);
       Error.throwWithStackTrace(failure, stackTrace);
     }
   }

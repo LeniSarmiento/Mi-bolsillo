@@ -16,6 +16,8 @@ import 'package:mi_bolsillo/features/income/application/income_controller.dart';
 import 'package:mi_bolsillo/features/transactions/application/transactions_controller.dart';
 import 'package:mi_bolsillo/features/transactions/domain/transaction_item.dart';
 
+import 'edit_movement.dart';
+
 enum MovementFilter {
   all('Todos'),
   expenses('Gastos'),
@@ -71,56 +73,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   }
 
   Future<void> _editMovement(TransactionItem tx) async {
-    if (tx.parentId != null && tx.type != TransactionType.baseIncome) {
-      final original = ref
-          .read(combinedMovementsProvider)
-          .where((item) => (item.linkedIncomeId ?? item.id) == tx.parentId)
-          .firstOrNull;
-      final series = await showDialog<bool>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Editar movimiento recurrente'),
-          content: const Text(
-            'Puedes modificar este movimiento o la programación original y sus próximas repeticiones. Los demás movimientos ya generados no cambian.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Solo este movimiento'),
-            ),
-            TextButton(
-              onPressed: original == null
-                  ? null
-                  : () => Navigator.pop(context, true),
-              child: const Text('Próximas repeticiones'),
-            ),
-          ],
-        ),
-      );
-      if (series == null || !mounted) return;
-      if (series) tx = original!;
-    }
-    if (tx.linkedIncomeId != null) {
-      final incomes = ref.read(incomeControllerProvider).items;
-      final match = incomes.where((i) => i.id == tx.linkedIncomeId).firstOrNull;
-      if (match != null) {
-        await context.push(AppRoutes.registerIncome, extra: match);
-        return;
-      }
-    }
-    if (tx.type == TransactionType.baseIncome) {
-      final now = DateTime.now();
-      if (tx.date.year != now.year || tx.date.month != now.month) {
-        AppSnackbar.showError(
-          context,
-          'El ingreso base de este mes ya está cerrado',
-        );
-        return;
-      }
-      await context.push(AppRoutes.onboardingIncome);
-      return;
-    }
-    await context.push(AppRoutes.registerExpense, extra: tx);
+    await editMovement(context, ref, tx);
   }
 
   Future<void> _deleteMovement(TransactionItem tx) async {

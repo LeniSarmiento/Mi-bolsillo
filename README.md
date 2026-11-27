@@ -4,7 +4,7 @@ Aplicación Flutter de finanzas personales en pesos colombianos. El primer uso c
 
 ## Ejecutar
 
-Probado con Flutter 3.50.1 y Dart 3.14.0. Correcciones de revisión en `feature/finance-review-fixes`:
+Probado con Flutter 3.50.1 y Dart 3.14.0. Mejoras de calidad en `feature/finance-quality`:
 
 ```sh
 flutter pub get
@@ -27,7 +27,8 @@ El APK debug se genera en `build/app/outputs/flutter-apk/app-debug.apk`. La vers
 - El disponible es un **presupuesto mensual**, no el saldo bancario ni el efectivo disponible: suma el ingreso base previsto del mes y los ingresos adicionales confirmados, y resta los gastos confirmados hasta la fecha local. La repetición del ingreso base ocurre el día 1; la frecuencia habitual de cobro es informativa y no programa depósitos. Un cambio desde Perfil afecta al mes actual y su repetición futura. Se permite 0 si no hay ingreso fijo y el historial anterior se conserva. El ingreso base no se elimina desde Movimientos.
 - Los importes se guardan en columnas INTEGER. Pegar `1.250,00` registra 1250 COP; fracciones distintas de cero, valores negativos, divisas y formatos ambiguos se rechazan. La previsualización de un gasto respeta su fecha y el periodo original al editar.
 - Cada movimiento recurrente conserva la próxima fecha. El inicio, la reanudación y el cambio de día en primer plano procesan las fechas vencidas. Las repeticiones son cada 7 o 14 días o por mes calendario. Si un mes carece del día original se usa su último día. La inserción y el avance de fecha comparten una transacción y la pareja plantilla-fecha es única. Desactivar una regla conserva su historial.
-- Las repeticiones generadas conservan su vínculo con la programación original. En Movimientos, al editarlas se puede elegir solo esa ocurrencia o la programación original y las próximas repeticiones. Una ocurrencia no puede crear otra serie. Borrar la programación cancela futuras repeticiones y conserva las ya generadas.
+- Tanto en Inicio como en Movimientos, una serie ofrece **Solo este movimiento** y **Próximas repeticiones**. Editar una ocurrencia cambia exclusivamente ese registro; la programación posterior mantiene sus valores anteriores. Editar las próximas pide una primera fecha posterior a hoy, crea una plantilla futura y congela la anterior sin cambiar importes ni fechas del historial. El cambio de frecuencia no genera registros retroactivos. **Detener próximas repeticiones** cancela la plantilla futura y conserva el historial.
+- Estas operaciones se ejecutan en una transacción. Los miembros históricos apuntan a la plantilla activa mediante `parent`; `scheduled` conserva el día original de una plantilla mensual para pasar por febrero sin desplazar el día 29, 30 o 31 de los siguientes meses. No se añaden columnas ni cambia el esquema 3. Una segunda escritura sobre una programación reemplazada se rechaza y requiere recargar.
 - Los presupuestos semanales empiezan el lunes. Los quincenales cubren del 1 al 15 y del 16 al final del mes. El resumen mensual consolidado solo incluye los presupuestos mensuales.
 - Movimientos exporta la lista filtrada a CSV y Análisis genera un PDF del periodo seleccionado. Los archivos se guardan en el destino que el usuario elige.
 
@@ -36,6 +37,8 @@ El APK debug se genera en `build/app/outputs/flutter-apk/app-debug.apk`. La vers
 En **Detección automática**, la aplicación explica el acceso antes de abrir los ajustes de Android. El servicio Kotlin revisa avisos nuevos de las aplicaciones admitidas. La cola privada conserva hasta 512 candidatos con comercio, pesos, fecha, aplicación y huella. El texto completo se descarta. Se ignoran formatos ambiguos, incluidos los avisos que contienen varios montos.
 
 El canal nativo entrega los candidatos a Flutter. SQLite guarda cada movimiento pendiente y su huella en una transacción. Solo después se acusa recibo a Android. La huella se conserva incluso al descartar o eliminar un movimiento. Editar un pendiente conserva su estado. Confirmarlo lo incorpora al saldo. Los datos financieros están excluidos del backup de Android.
+
+La identidad normaliza mayúsculas, espacios y composición Unicode del comercio; conserva la aplicación, clave de notificación, fecha e importe para distinguir avisos diferentes. Se reconocen comercios después de «en» y «a». El canal incluye la huella anterior del mismo texto para enlazar recibos previos sin volver a importar el movimiento. Un aviso con una clave, fecha o importe diferentes sigue requiriendo revisión del usuario; no se presume que corresponde a la misma compra.
 
 La detección depende de los avisos que emite cada aplicación y del acceso concedido en el teléfono. Compras en efectivo o avisos sin un formato reconocido requieren registro manual. En web se puede registrar y consultar dinero manualmente. Al borrar los datos del sitio se elimina su base.
 
@@ -47,7 +50,7 @@ El botón de ocultar montos en Inicio cubre el disponible, tarjetas, ingresos ad
 
 En **Perfil → Copia de seguridad local** se puede exportar un JSON completo con movimientos, recurrencias, presupuestos, ajustes y recibos de deduplicación. El archivo no está cifrado: se debe elegir una carpeta privada en el dispositivo y custodiarlo. No se sincroniza automáticamente ni se habilita el backup de Android. CSV y PDF son reportes y no pueden restaurarse.
 
-Restaurar valida el formato, versión, enteros, categorías, identificadores y reglas de recurrencia antes de pedir confirmación. Reemplaza la base en una única transacción; ante un error de escritura se revierte íntegramente. Se bloquean las acciones de interfaz durante la operación. Detección, recordatorios y alertas quedan pausados hasta que el usuario los active. Se admiten archivos del formato 1, esquema 3, de hasta 20 MB. Esta versión no cambia el esquema SQLite existente.
+Restaurar valida formato, versión, enteros, categorías, identificadores y reglas de recurrencia antes de pedir confirmación. Rechaza dos ingresos base en el mismo mes, varias programaciones de salario activas, pendientes que no sean gastos de notificaciones y relaciones de recurrencia incompatibles. Reemplaza la base en una única transacción; ante un error de escritura se revierte íntegramente. Se bloquean las acciones de interfaz durante la operación. Detección, recordatorios y alertas quedan pausados hasta que el usuario los active. Se exporta formato 2 y se aceptan formatos 1 y 2 del esquema 3, hasta 20 MB. El formato 2 evita que versiones anteriores interpreten incorrectamente las nuevas plantillas de recurrencia.
 
 Los cambios de Ajustes se aplican en orden para no sobrescribir preferencias recientes. Si una escritura termina y falla la recarga posterior, la pantalla permite reintentar la lectura sin informar falsamente que el guardado falló.
 

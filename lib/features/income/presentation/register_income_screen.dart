@@ -7,6 +7,7 @@ import 'package:mi_bolsillo/core/theme/app_colors.dart';
 import 'package:mi_bolsillo/core/theme/app_spacing.dart';
 import 'package:mi_bolsillo/core/widgets/app_snackbar.dart';
 import 'package:mi_bolsillo/core/widgets/state_feedback_views.dart';
+import 'package:mi_bolsillo/core/widgets/confirm_delete_dialog.dart';
 import 'package:mi_bolsillo/features/income/application/income_controller.dart';
 import 'package:mi_bolsillo/features/income/domain/additional_income.dart';
 import 'package:mi_bolsillo/features/transactions/domain/transaction_item.dart';
@@ -14,9 +15,14 @@ import 'package:mi_bolsillo/features/transactions/domain/transaction_item.dart';
 /// Screen 5: Registrar ingreso adicional.
 /// Success feedback MUST NOT be visible initially; it appears ONLY via snackbar after saving.
 class RegisterIncomeScreen extends ConsumerStatefulWidget {
-  const RegisterIncomeScreen({super.key, this.existingIncome});
+  const RegisterIncomeScreen({
+    super.key,
+    this.existingIncome,
+    this.futureOnly = false,
+  });
 
   final AdditionalIncome? existingIncome;
+  final bool futureOnly;
 
   @override
   ConsumerState<RegisterIncomeScreen> createState() =>
@@ -55,6 +61,11 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
   }
 
   bool get _isEditing => widget.existingIncome != null;
+  bool get _occurrenceOnly =>
+      !widget.futureOnly &&
+      _isEditing &&
+      (widget.existingIncome!.parentId != null ||
+          widget.existingIncome!.recurrence != RecurrenceFrequency.none);
 
   @override
   void initState() {
@@ -72,7 +83,9 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
     _receptionMethod =
         existing?.receptionMethod ?? PaymentMethods.incomeChannels.first;
     _isRecurring =
-        existing != null && existing.recurrence != RecurrenceFrequency.none;
+        !_occurrenceOnly &&
+        existing != null &&
+        existing.recurrence != RecurrenceFrequency.none;
     _recurrenceFrequency =
         (existing != null && existing.recurrence != RecurrenceFrequency.none)
         ? existing.recurrence
@@ -95,11 +108,15 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
   }
 
   Future<void> _pickDate() async {
+    final today = DateTime.now();
+    final tomorrow = DateTime(today.year, today.month, today.day + 1);
     final picked = await showDatePicker(
       context: context,
-      initialDate: _date,
-      firstDate: DateTime(2023),
-      lastDate: DateTime(2030),
+      initialDate: widget.futureOnly && _date.isBefore(tomorrow)
+          ? tomorrow
+          : _date,
+      firstDate: widget.futureOnly ? tomorrow : DateTime(2023),
+      lastDate: DateTime(today.year + 10, 12, 31),
       locale: const Locale('es', 'CO'),
     );
     if (picked != null) {
@@ -110,6 +127,16 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
   }
 
   Future<void> _saveIncome() async {
+    final today = DateTime.now();
+    if (widget.futureOnly &&
+        !_date.isAfter(
+          DateTime(today.year, today.month, today.day, 23, 59, 59, 999),
+        )) {
+      setState(
+        () => _formError = 'Elige una primera repetición posterior a hoy.',
+      );
+      return;
+    }
     final amount = CopFormatter.parseDigits(_amountController.text);
     final reason = _reasonController.text.trim();
     if (!(_formKey.currentState?.validate() ?? false) ||
@@ -139,6 +166,7 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
           note: _noteController.text.trim(),
           recurrence: recurrence,
         ),
+        futureOnly: widget.futureOnly,
       );
     } else {
       await controller.addIncome(
@@ -155,11 +183,43 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
     if (!mounted) return;
     AppSnackbar.showSuccess(
       context,
-      _isEditing
+      widget.futureOnly
+          ? 'Próximas repeticiones actualizadas'
+          : _isEditing
           ? 'Ingreso adicional actualizado correctamente'
           : 'Ingreso adicional guardado correctamente (+${CopFormatter.format(amount)})',
     );
     context.pop();
+  }
+
+  Future<void> _stopFuture() async {
+    if (_saving) return;
+    final accepted = await ConfirmDeleteDialog.show(
+      context,
+      title: '¿Detener próximas repeticiones?',
+      description: 'Se cancelarán los próximos movimientos de esta serie. El historial anterior se conserva.',
+      confirmLabel: 'Detener',
+    );
+    if (!accepted || !mounted || _saving) return;
+    setState(() => _saving = true);
+    try {
+      await ref
+          .read(incomeControllerProvider.notifier)
+          .stopFuture(widget.existingIncome!.id);
+      if (mounted) {
+        AppSnackbar.showSuccess(context, 'Próximas repeticiones detenidas');
+        context.pop();
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => _formError =
+              'No se pudo detener la programación. Recarga los movimientos.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
@@ -173,7 +233,9 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          _isEditing
+          widget.futureOnly
+              ? 'Próximos ingresos'
+              : _isEditing
               ? 'Editar ingreso adicional'
               : 'Registrar ingreso adicional',
         ),
@@ -192,6 +254,10 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    if (widget.futureOnly)
+                      const Text(
+                        'Los cambios empiezan en la primera fecha indicada. Los ingresos anteriores no cambian.',
+                      ),
                     if (_formError != null) ...[
                       FormErrorBanner(message: _formError!),
                       const SizedBox(height: AppSpacing.md),
@@ -280,7 +346,9 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     Text(
-                      'Fecha de recepción',
+                      widget.futureOnly
+                          ? 'Primera repetición'
+                          : 'Fecha de recepción',
                       style: theme.textTheme.titleMedium,
                     ),
                     const SizedBox(height: AppSpacing.xs),
@@ -330,13 +398,12 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
                             SwitchListTile(
                               value: _isRecurring,
                               onChanged:
-                                  isBusy ||
-                                      widget.existingIncome?.parentId != null
+                                  isBusy || _occurrenceOnly || widget.futureOnly
                                   ? null
                                   : (val) => setState(() => _isRecurring = val),
                               title: const Text('Repetir este ingreso'),
                               subtitle: Text(
-                                widget.existingIncome?.parentId != null
+                                _occurrenceOnly
                                     ? 'Editas solo este ingreso. Cambia la serie desde Próximas repeticiones en Movimientos.'
                                     : 'Configura las próximas repeticiones; los movimientos ya generados se conservan.',
                               ),
@@ -413,11 +480,18 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
                       label: Text(
                         isBusy
                             ? 'Guardando...'
+                            : widget.futureOnly
+                            ? 'Guardar próximas repeticiones'
                             : _isEditing
                             ? 'Actualizar ingreso'
                             : 'Guardar ingreso',
                       ),
                     ),
+                    if (widget.futureOnly)
+                      TextButton(
+                        onPressed: isBusy ? null : _stopFuture,
+                        child: const Text('Detener próximas repeticiones'),
+                      ),
                   ],
                 ),
               ),

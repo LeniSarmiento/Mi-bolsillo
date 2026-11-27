@@ -4,6 +4,8 @@ import 'package:mi_bolsillo/features/income/application/income_controller.dart';
 import 'package:mi_bolsillo/features/transactions/domain/transaction_item.dart';
 import 'package:mi_bolsillo/core/errors/finance_failure.dart';
 
+import '../domain/recurrence_repository.dart';
+
 class TransactionsState {
   const TransactionsState({
     this.items = const [],
@@ -97,12 +99,21 @@ class TransactionsController extends Notifier<TransactionsState> {
     }
   }
 
-  Future<void> updateTransaction(TransactionItem item) async {
+  Future<void> updateTransaction(
+    TransactionItem item, {
+    bool futureOnly = false,
+  }) async {
     if (state.isSaving || state.isDeleting) return;
     state = state.copyWith(isSaving: true, clearError: true);
     final repo = ref.read(transactionRepositoryProvider);
     try {
-      await repo.updateTransaction(item);
+      if (futureOnly) {
+        await (repo as RecurrenceRepository<TransactionItem>).reviseFuture(
+          item,
+        );
+      } else {
+        await repo.updateTransaction(item);
+      }
       await loadTransactions();
       await evaluateBudgetAlerts();
       state = state.copyWith(isSaving: false);
@@ -124,6 +135,22 @@ class TransactionsController extends Notifier<TransactionsState> {
     } catch (error, stackTrace) {
       final failure = FinanceFailure.from(error);
       state = state.copyWith(isDeleting: false, errorMessage: failure.message);
+      Error.throwWithStackTrace(failure, stackTrace);
+    }
+  }
+
+  Future<void> stopFuture(String id) async {
+    if (state.isSaving || state.isDeleting) return;
+    state = state.copyWith(isSaving: true, clearError: true);
+    try {
+      await (ref.read(
+        transactionRepositoryProvider,
+      ) as RecurrenceRepository<TransactionItem>).stopFuture(id);
+      await loadTransactions();
+      state = state.copyWith(isSaving: false);
+    } catch (error, stackTrace) {
+      final failure = FinanceFailure.from(error);
+      state = state.copyWith(isSaving: false, errorMessage: failure.message);
       Error.throwWithStackTrace(failure, stackTrace);
     }
   }
@@ -178,6 +205,7 @@ final combinedMovementsProvider = Provider<List<TransactionItem>>((ref) {
       note: inc.note,
       source: inc.source,
       parentId: inc.parentId,
+      nextOccurrence: inc.nextOccurrence,
     ),
   );
 

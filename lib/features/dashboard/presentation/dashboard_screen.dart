@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import '../../transactions/domain/transaction_item.dart';
+import '../../transactions/presentation/edit_movement.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -271,9 +272,14 @@ class DashboardScreen extends ConsumerWidget {
                                             TextButton.icon(
                                               onPressed: incomeState.isDeleting
                                                   ? null
-                                                  : () => context.push(
-                                                      AppRoutes.registerIncome,
-                                                      extra: income,
+                                                  : () => editMovement(
+                                                      context,
+                                                      ref,
+                                                      combined.firstWhere(
+                                                        (m) =>
+                                                            m.linkedIncomeId ==
+                                                            income.id,
+                                                      ),
                                                     ),
                                               icon: const Icon(
                                                 Icons.edit_outlined,
