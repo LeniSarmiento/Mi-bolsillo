@@ -71,6 +71,35 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   }
 
   Future<void> _editMovement(TransactionItem tx) async {
+    if (tx.parentId != null && tx.type != TransactionType.baseIncome) {
+      final original = ref
+          .read(combinedMovementsProvider)
+          .where((item) => (item.linkedIncomeId ?? item.id) == tx.parentId)
+          .firstOrNull;
+      final series = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Editar movimiento recurrente'),
+          content: const Text(
+            'Puedes modificar este movimiento o la programación original y sus próximas repeticiones. Los demás movimientos ya generados no cambian.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Solo este movimiento'),
+            ),
+            TextButton(
+              onPressed: original == null
+                  ? null
+                  : () => Navigator.pop(context, true),
+              child: const Text('Próximas repeticiones'),
+            ),
+          ],
+        ),
+      );
+      if (series == null || !mounted) return;
+      if (series) tx = original!;
+    }
     if (tx.linkedIncomeId != null) {
       final incomes = ref.read(incomeControllerProvider).items;
       final match = incomes.where((i) => i.id == tx.linkedIncomeId).firstOrNull;
@@ -95,11 +124,18 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   }
 
   Future<void> _deleteMovement(TransactionItem tx) async {
+    if (tx.type == TransactionType.baseIncome) {
+      AppSnackbar.showError(
+        context,
+        'El ingreso base se modifica desde Perfil. Allí puedes cambiar el monto o desactivar su repetición.',
+      );
+      return;
+    }
     final confirmed = await ConfirmDeleteDialog.show(
       context,
       title: '¿Eliminar movimiento?',
       description:
-          'Se eliminará "${tx.description}" (${CopFormatter.formatSigned(tx.amountCop, isPositive: tx.isIncome)}) de tu historial.',
+          'Se eliminará "${tx.description}" (${CopFormatter.formatSigned(tx.amountCop, isPositive: tx.isIncome)}) de tu historial.${tx.recurrence != RecurrenceFrequency.none ? ' También se cancelarán sus próximas repeticiones; las anteriores se conservan.' : ''}',
     );
     if (!confirmed || !mounted) return;
 
@@ -428,11 +464,17 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                         icon: tx.isAutomatic
                             ? Icons.bolt_rounded
                             : Icons.edit_note_rounded,
-                        label: tx.isAutomatic ? 'Automático' : 'Manual',
+                        label: tx.source == MovementSource.recurring
+                            ? 'Recurrente'
+                            : tx.isAutomatic
+                            ? 'Automático'
+                            : 'Manual',
                       ),
                       _MetaPill(
                         icon: Icons.repeat_rounded,
-                        label: tx.recurrence == RecurrenceFrequency.none
+                        label: tx.parentId != null
+                            ? 'Parte de una serie'
+                            : tx.recurrence == RecurrenceFrequency.none
                             ? 'Único'
                             : tx.recurrence.label,
                       ),

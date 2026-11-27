@@ -70,7 +70,7 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
     final amount = _parsedAmount;
     if (!(_formKey.currentState?.validate() ?? false) ||
         amount == null ||
-        amount <= 0) {
+        amount < 0) {
       setState(() {
         _formError = 'Ingresa un ingreso mensual válido en pesos colombianos.';
       });
@@ -136,13 +136,12 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            'Paso 1 de 2: Tu ingreso base',
+                            'Configura tu presupuesto mensual',
                             style: theme.textTheme.labelLarge?.copyWith(
                               color: theme.colorScheme.primary,
                             ),
                           ),
                         ),
-                        Text('50%', style: theme.textTheme.labelMedium),
                       ],
                     ),
                     const SizedBox(height: AppSpacing.xs),
@@ -151,7 +150,7 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
                         AppSpacing.radiusPill,
                       ),
                       child: const LinearProgressIndicator(
-                        value: 0.5,
+                        value: 1,
                         minHeight: 8,
                       ),
                     ),
@@ -162,7 +161,7 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
                     ),
                     const SizedBox(height: AppSpacing.xs),
                     Text(
-                      'Toca el campo para escribir con el teclado numérico de tu teléfono.',
+                      'Este importe es tu ingreso base previsto para el mes, no una confirmación de cobro. Puedes usar 0 si no tienes un ingreso fijo.',
                       style: theme.textTheme.bodyMedium,
                     ),
                     if (_formError != null) ...[
@@ -197,8 +196,8 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
                       ),
                       validator: (value) {
                         final parsed = CopFormatter.parseDigits(value ?? '');
-                        if (parsed == null || parsed <= 0) {
-                          return 'Ingresa un monto mayor a \$0 COP';
+                        if (parsed == null || parsed < 0) {
+                          return 'Usa pesos enteros, por ejemplo 1.250 o 0';
                         }
                         return null;
                       },
@@ -230,7 +229,7 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
                     ),
                     const SizedBox(height: AppSpacing.xl),
                     Text(
-                      '¿Cuándo recibes este dinero?',
+                      'Frecuencia habitual de cobro (informativa)',
                       style: theme.textTheme.titleMedium,
                     ),
                     const SizedBox(height: AppSpacing.sm),
@@ -257,7 +256,7 @@ class _InitialIncomeScreenState extends ConsumerState<InitialIncomeScreen> {
                             : (val) => setState(() => _autoRepeat = val),
                         title: const Text('Repetir automáticamente'),
                         subtitle: const Text(
-                          'Renueva tu ingreso base cada mes sin volver a digitarlo.',
+                          'Renueva el presupuesto el día 1 de cada mes. La frecuencia de cobro no programa depósitos.',
                         ),
                       ),
                     ),

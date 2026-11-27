@@ -11,6 +11,7 @@ class MoneyAmountText extends StatelessWidget {
     this.showCurrency = true,
     this.showIcon = true,
     this.style,
+    this.hidden = false,
   });
 
   final int amountCop;
@@ -18,6 +19,7 @@ class MoneyAmountText extends StatelessWidget {
   final bool showCurrency;
   final bool showIcon;
   final TextStyle? style;
+  final bool hidden;
 
   @override
   Widget build(BuildContext context) {
@@ -26,12 +28,16 @@ class MoneyAmountText extends StatelessWidget {
     final icon = isIncome
         ? Icons.arrow_upward_rounded
         : Icons.arrow_downward_rounded;
-    final formatted = CopFormatter.formatSigned(
-      amountCop,
-      isPositive: isIncome,
-      includeCurrency: showCurrency,
-    );
-    final semanticLabel = isIncome
+    final formatted = hidden
+        ? '\$ ••••••'
+        : CopFormatter.formatSigned(
+            amountCop,
+            isPositive: isIncome,
+            includeCurrency: showCurrency,
+          );
+    final semanticLabel = hidden
+        ? 'Monto oculto'
+        : isIncome
         ? 'Ingreso de ${CopFormatter.format(amountCop)}'
         : 'Gasto de ${CopFormatter.format(amountCop)}';
 

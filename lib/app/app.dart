@@ -37,7 +37,9 @@ class _MiBolsilloAppState extends ConsumerState<MiBolsilloApp>
     WidgetsBinding.instance.addObserver(this);
     if (_hasBridge) {
       NotificationBridge.channel.setMethodCallHandler((call) async {
-        if (call.method == 'arrival' && mounted) {
+        if (call.method == 'arrival' &&
+            mounted &&
+            !ref.read(backupActivityProvider)) {
           await ref.read(automaticDetectionControllerProvider.notifier).load();
         }
       });
@@ -57,6 +59,7 @@ class _MiBolsilloAppState extends ConsumerState<MiBolsilloApp>
   void _refresh() {
     if (!mounted) return;
     _scheduleMidnight();
+    if (ref.read(backupActivityProvider)) return;
     ref.invalidate(transactionsControllerProvider);
     ref.invalidate(incomeControllerProvider);
     ref.invalidate(automaticDetectionControllerProvider);

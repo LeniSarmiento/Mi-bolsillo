@@ -157,11 +157,13 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
         _saving ||
         ref.watch(transactionsControllerProvider.select((s) => s.isSaving));
     final enteredAmount = CopFormatter.parseDigits(_amountController.text) ?? 0;
-    final projectedAvailable = _isEditing
-        ? summary.availableCop +
-              widget.existingTransaction!.amountCop -
-              enteredAmount
-        : summary.availableCop - enteredAmount;
+    final projectedAvailable = previewExpenseBalance(
+      availableCop: summary.availableCop,
+      amountCop: enteredAmount,
+      date: _selectedDate,
+      today: DateTime.now(),
+      original: widget.existingTransaction,
+    );
 
     return Scaffold(
       appBar: AppBar(
@@ -320,6 +322,10 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                     ),
                     const SizedBox(height: AppSpacing.lg),
                     Text('Recurrencia', style: theme.textTheme.titleMedium),
+                    if (widget.existingTransaction?.parentId != null)
+                      const Text(
+                        'Editas solo este movimiento. Para cambiar la serie, elige Próximas repeticiones desde Movimientos.',
+                      ),
                     const SizedBox(height: AppSpacing.xs),
                     Wrap(
                       spacing: AppSpacing.xs,
@@ -328,7 +334,9 @@ class _RegisterExpenseScreenState extends ConsumerState<RegisterExpenseScreen> {
                         return ChoiceChip(
                           label: Text(freq.label),
                           selected: _recurrence == freq,
-                          onSelected: isBusy
+                          onSelected:
+                              isBusy ||
+                                  widget.existingTransaction?.parentId != null
                               ? null
                               : (_) => setState(() => _recurrence = freq),
                         );

@@ -1,4 +1,7 @@
 import 'package:material_ui/material_ui.dart';
+
+import '../../transactions/domain/transaction_item.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mi_bolsillo/app/providers.dart';
@@ -125,6 +128,7 @@ class DashboardScreen extends ConsumerWidget {
                         ],
                         _GreetingHeader(
                           firstName: settings.firstName,
+                          hideBalances: settings.hideBalances,
                           isNegative: summary.isNegative,
                           dailyPaceCop: dailyPaceCop,
                           remainingDays: remainingDays,
@@ -141,7 +145,7 @@ class DashboardScreen extends ConsumerWidget {
                                 .dismissAutoDetectionBanner(),
                           ),
                         ],
-                        if (summary.isNegative) ...[
+                        if (summary.isNegative && !settings.hideBalances) ...[
                           const SizedBox(height: AppSpacing.md),
                           NegativeBalanceBanner(
                             deficitCopText: CopFormatter.format(
@@ -250,6 +254,7 @@ class DashboardScreen extends ConsumerWidget {
                                           const SizedBox(width: AppSpacing.xs),
                                           Flexible(
                                             child: MoneyAmountText(
+                                              hidden: settings.hideBalances,
                                               amountCop: income.amountCop,
                                               isIncome: true,
                                               showCurrency: false,
@@ -285,7 +290,7 @@ class DashboardScreen extends ConsumerWidget {
                                                             context,
                                                             title: '¿Eliminar ingreso adicional?',
                                                             description:
-                                                                'Se eliminará "${income.reason}" (${CopFormatter.formatSigned(income.amountCop, isPositive: true)}) de tus entradas confirmadas.',
+                                                                'Se eliminará "${income.reason}" de tus entradas confirmadas.${income.recurrence != RecurrenceFrequency.none ? ' También se cancelarán las próximas repeticiones; las anteriores se conservan.' : ''}',
                                                           );
                                                       if (!confirmed ||
                                                           !context.mounted) {
@@ -404,6 +409,7 @@ class DashboardScreen extends ConsumerWidget {
                                       maxWidth: 120,
                                     ),
                                     child: MoneyAmountText(
+                                      hidden: settings.hideBalances,
                                       amountCop: tx.amountCop,
                                       isIncome: tx.isIncome,
                                       showCurrency: false,
@@ -431,12 +437,14 @@ class _GreetingHeader extends StatelessWidget {
     required this.isNegative,
     required this.dailyPaceCop,
     required this.remainingDays,
+    required this.hideBalances,
   });
 
   final String firstName;
   final bool isNegative;
   final int dailyPaceCop;
   final int remainingDays;
+  final bool hideBalances;
 
   @override
   Widget build(BuildContext context) {
@@ -454,7 +462,9 @@ class _GreetingHeader extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                isNegative
+                hideBalances
+                    ? 'Montos ocultos en Inicio'
+                    : isNegative
                     ? 'Atención · Disponible en déficit'
                     : '$remainingDays días restantes · ~${CopFormatter.format(dailyPaceCop)} / día',
                 style: theme.textTheme.bodyMedium,
@@ -463,39 +473,43 @@ class _GreetingHeader extends StatelessWidget {
           ),
         ),
         const SizedBox(width: AppSpacing.xs),
-        Semantics(
-          label: isNegative ? 'Estado: déficit' : 'Estado: al día',
-          child: ExcludeSemantics(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(
-                color: isNegative
-                    ? semantic.expenseContainer
-                    : semantic.incomeContainer,
-                borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    isNegative
-                        ? Icons.error_outline_rounded
-                        : Icons.verified_rounded,
-                    size: 16,
-                    color: isNegative ? semantic.expense : semantic.income,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    isNegative ? 'Déficit' : 'Al día',
-                    style: theme.textTheme.labelMedium?.copyWith(
+        if (!hideBalances)
+          Semantics(
+            label: isNegative ? 'Estado: déficit' : 'Estado: al día',
+            child: ExcludeSemantics(
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: isNegative
+                      ? semantic.expenseContainer
+                      : semantic.incomeContainer,
+                  borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isNegative
+                          ? Icons.error_outline_rounded
+                          : Icons.verified_rounded,
+                      size: 16,
                       color: isNegative ? semantic.expense : semantic.income,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 4),
+                    Text(
+                      isNegative ? 'Déficit' : 'Al día',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: isNegative ? semantic.expense : semantic.income,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
       ],
     );
   }
@@ -598,7 +612,7 @@ class _HeroBalanceCard extends StatelessWidget {
       padding: const EdgeInsets.all(AppSpacing.lg),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: summary.isNegative
+          colors: summary.isNegative && !hideBalances
               ? [const Color(0xFF7F1D1D), const Color(0xFF991B1B)]
               : [semantic.heroStart, semantic.heroEnd],
           begin: Alignment.topLeft,
@@ -643,32 +657,35 @@ class _HeroBalanceCard extends StatelessWidget {
           ),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            'Fórmula: Ingreso mensual + Adicionales confirmados - Gastos',
+            'Presupuesto mensual: ingreso base previsto + adicionales confirmados − gastos. No es el saldo de tus cuentas.',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: Colors.white.withValues(alpha: 0.85),
             ),
           ),
           const SizedBox(height: AppSpacing.md),
-          Semantics(
-            label:
-                '${summary.committedPercent} por ciento comprometido de tus ingresos',
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
-              child: LinearProgressIndicator(
-                value: summary.committedPercent / 100,
-                minHeight: 8,
-                backgroundColor: Colors.white.withValues(alpha: 0.2),
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  summary.isNegative
-                      ? const Color(0xFFFCA5A5)
-                      : AppColors.secondarySoft,
+          if (!hideBalances)
+            Semantics(
+              label:
+                  '${summary.committedPercent} por ciento comprometido de tus ingresos',
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(AppSpacing.radiusPill),
+                child: LinearProgressIndicator(
+                  value: summary.committedPercent / 100,
+                  minHeight: 8,
+                  backgroundColor: Colors.white.withValues(alpha: 0.2),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    summary.isNegative
+                        ? const Color(0xFFFCA5A5)
+                        : AppColors.secondarySoft,
+                  ),
                 ),
               ),
             ),
-          ),
           const SizedBox(height: AppSpacing.xs),
           Text(
-            '${summary.committedPercent}% comprometido · ${CopFormatter.format(summary.expensesCop)} de ${CopFormatter.format(summary.totalIncomeCop)}',
+            hideBalances
+                ? 'Ingresos, gastos y proporciones ocultos'
+                : '${summary.committedPercent}% comprometido · ${CopFormatter.format(summary.expensesCop)} de ${CopFormatter.format(summary.totalIncomeCop)}',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: Colors.white.withValues(alpha: 0.9),
             ),
@@ -708,7 +725,7 @@ class _SeparateSummaryGrid extends StatelessWidget {
           ),
           children: [
             _MetricCard(
-              label: 'Ingreso mensual',
+              label: 'Ingreso base previsto',
               value: maskOrFormat(
                 CopFormatter.format(summary.monthlyIncomeCop),
               ),
@@ -743,13 +760,13 @@ class _SeparateSummaryGrid extends StatelessWidget {
             _MetricCard(
               label: 'Disponible este mes',
               value: maskOrFormat(CopFormatter.format(summary.availableCop)),
-              icon: summary.isNegative
+              icon: summary.isNegative && !hideBalances
                   ? Icons.warning_amber_rounded
                   : Icons.savings_outlined,
-              accentColor: summary.isNegative
+              accentColor: summary.isNegative && !hideBalances
                   ? semantic.expense
                   : semantic.income,
-              bgColor: summary.isNegative
+              bgColor: summary.isNegative && !hideBalances
                   ? semantic.expenseContainer
                   : semantic.incomeContainer,
             ),

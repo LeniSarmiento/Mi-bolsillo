@@ -1,4 +1,7 @@
 import 'package:material_ui/material_ui.dart';
+
+import 'backup_controls.dart';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mi_bolsillo/app/providers.dart';
@@ -163,7 +166,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                           leading: const Icon(
                             Icons.account_balance_wallet_outlined,
                           ),
-                          title: const Text('Ingreso mensual base'),
+                          title: const Text('Ingreso mensual previsto'),
                           subtitle: Text(
                             CopFormatter.format(settings.monthlyIncomeCop),
                           ),
@@ -173,7 +176,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         const Divider(height: 1),
                         ListTile(
                           leading: const Icon(Icons.event_repeat_rounded),
-                          title: const Text('Frecuencia de pago'),
+                          title: const Text('Frecuencia de pago (informativa)'),
                           subtitle: Text(settings.payFrequency.label),
                         ),
                         const Divider(height: 1),
@@ -261,6 +264,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   const SizedBox(height: AppSpacing.lg),
                   Text('Datos locales', style: theme.textTheme.titleMedium),
                   const SizedBox(height: AppSpacing.xs),
+                  const BackupControls(),
+                  const SizedBox(height: AppSpacing.md),
                   OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: semantic.expense,

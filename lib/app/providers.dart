@@ -17,6 +17,16 @@ final databaseProvider = Provider<FinanceDatabase>((ref) {
   ref.onDispose(db.close);
   return db;
 });
+
+class BackupActivity extends Notifier<bool> {
+  @override
+  bool build() => false;
+  void setBusy(bool value) => state = value;
+}
+
+final backupActivityProvider = NotifierProvider<BackupActivity, bool>(
+  BackupActivity.new,
+);
 final ledgerProvider = Provider((ref) => Ledger(ref.watch(databaseProvider)));
 final bridgeProvider = Provider((ref) => NotificationBridge());
 final appNotificationsProvider = Provider<AppNotifications>(

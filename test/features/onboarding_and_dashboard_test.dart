@@ -63,7 +63,7 @@ void main() {
     (tester) async {
       await _pumpApp(tester, initialLocation: AppRoutes.dashboard);
 
-      expect(find.text('Ingreso mensual'), findsOneWidget);
+      expect(find.text('Ingreso base previsto'), findsOneWidget);
       expect(find.text('\$2.400.000 COP'), findsOneWidget);
       expect(find.text('Ingresos adicionales'), findsOneWidget);
       expect(find.text('+\$480.000 COP'), findsWidgets);

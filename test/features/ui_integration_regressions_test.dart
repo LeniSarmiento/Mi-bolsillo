@@ -70,9 +70,92 @@ class _UnsupportedBridge extends NotificationBridge {
   bool get supported => false;
 }
 
+class _SupportedBridge extends NotificationBridge {
+  @override
+  bool get supported => true;
+}
+
+class _AwaitingPermissionRepository extends MockAutomaticDetectionRepository {
+  @override
+  Future<bool> isEnabled() async => false;
+  @override
+  Future<void> setEnabled(bool enabled) async {}
+}
+
 void main() {
   setUpAll(() async {
     await initializeDateFormatting('es_CO');
+  });
+
+  testWidgets('Ocultar montos elimina importes y proporciones de Inicio', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    await tester.binding.setSurfaceSize(const Size(412, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpFinance(tester, AppRoutes.dashboard);
+    expect(find.textContaining(RegExp(r'\$\s*\d')), findsWidgets);
+    await tester.tap(find.byTooltip('Ocultar montos'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining(RegExp(r'\$\s*\d')), findsNothing);
+    expect(find.textContaining('/ día'), findsNothing);
+    expect(
+      find.bySemanticsLabel(RegExp(r'por ciento comprometido')),
+      findsNothing,
+    );
+    final hiddenAmount = find
+        .byWidgetPredicate(
+          (widget) =>
+              widget is Semantics && widget.properties.label == 'Monto oculto',
+        )
+        .first;
+    await tester.ensureVisible(hiddenAmount);
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel(RegExp('Monto oculto')), findsWidgets);
+    expect(
+      find.bySemanticsLabel(RegExp(r'(Ingreso|Gasto) de \$\d')),
+      findsNothing,
+    );
+    await tester.ensureVisible(find.byTooltip('Mostrar montos'));
+    await tester.tap(find.byTooltip('Mostrar montos'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining(RegExp(r'\$\s*\d')), findsWidgets);
+    semantics.dispose();
+  });
+
+  testWidgets('Abrir Ajustes no anuncia detección activa antes del permiso', (
+    tester,
+  ) async {
+    final db = FinanceDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          databaseProvider.overrideWithValue(db),
+          bridgeProvider.overrideWithValue(_SupportedBridge()),
+          automaticDetectionRepositoryProvider.overrideWithValue(
+            _AwaitingPermissionRepository(),
+          ),
+        ],
+        child: const MiBolsilloApp(initialLocation: AppRoutes.autoDetection),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(SwitchListTile).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Continuar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Detección automática activada'), findsNothing);
+    expect(
+      find.text(
+        'Autoriza el acceso en Ajustes de Android y vuelve a la aplicación.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<SwitchListTile>(find.byType(SwitchListTile).first).value,
+      isFalse,
+    );
   });
 
   testWidgets(

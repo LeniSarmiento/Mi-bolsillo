@@ -329,12 +329,16 @@ class _RegisterIncomeScreenState extends ConsumerState<RegisterIncomeScreen> {
                           children: [
                             SwitchListTile(
                               value: _isRecurring,
-                              onChanged: isBusy
+                              onChanged:
+                                  isBusy ||
+                                      widget.existingIncome?.parentId != null
                                   ? null
                                   : (val) => setState(() => _isRecurring = val),
                               title: const Text('Repetir este ingreso'),
-                              subtitle: const Text(
-                                'Configura si este ingreso adicional es periódico.',
+                              subtitle: Text(
+                                widget.existingIncome?.parentId != null
+                                    ? 'Editas solo este ingreso. Cambia la serie desde Próximas repeticiones en Movimientos.'
+                                    : 'Configura las próximas repeticiones; los movimientos ya generados se conservan.',
                               ),
                             ),
                             if (_isRecurring) ...[

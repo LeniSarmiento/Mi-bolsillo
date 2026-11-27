@@ -58,9 +58,11 @@ class AutoDetectionScreen extends ConsumerWidget {
       if (context.mounted) {
         AppSnackbar.showSuccess(
           context,
-          enabled
+          !enabled
+              ? 'Detección automática pausada'
+              : ref.read(automaticDetectionControllerProvider).isEnabled
               ? 'Detección automática activada'
-              : 'Detección automática pausada',
+              : 'Autoriza el acceso en Ajustes de Android y vuelve a la aplicación.',
         );
       }
     } catch (_) {
@@ -209,6 +211,10 @@ class AutoDetectionScreen extends ConsumerWidget {
                                   child: const Text(
                                     'Bancolombia: Compraste \$78.500 COP en ÉXITO CALLE 80 con tu tarjeta.',
                                   ),
+                                ),
+                                const SizedBox(height: AppSpacing.sm),
+                                const Text(
+                                  'Solo se revisan formatos de compra reconocidos de las aplicaciones indicadas. Los avisos ambiguos, sin monto o no reconocidos requieren registro manual. No existe conexión directa con tu banco.',
                                 ),
                                 const SizedBox(height: AppSpacing.sm),
                                 Row(
