@@ -26,6 +26,8 @@ class AdditionalIncome {
     required this.note,
     required this.recurrence,
     this.nextOccurrence,
+    this.parentId,
+    this.source = MovementSource.manual,
   });
 
   final String id;
@@ -37,6 +39,8 @@ class AdditionalIncome {
   final String note;
   final RecurrenceFrequency recurrence;
   final DateTime? nextOccurrence;
+  final String? parentId;
+  final MovementSource source;
 
   AdditionalIncome copyWith({
     String? id,
@@ -58,6 +62,8 @@ class AdditionalIncome {
       note: note ?? this.note,
       recurrence: recurrence ?? this.recurrence,
       nextOccurrence: nextOccurrence,
+      parentId: parentId,
+      source: source,
     );
   }
 }

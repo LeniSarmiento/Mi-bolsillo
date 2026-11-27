@@ -33,14 +33,7 @@ DashboardSummary summarizeMonth(
   Iterable<TransactionItem> entries,
   DateTime today,
 ) {
-  final end = DateTime(today.year, today.month, today.day + 1);
-  final start = DateTime(today.year, today.month);
-  final current = entries.where(
-    (t) =>
-        t.status == MovementStatus.confirmed &&
-        !t.date.isBefore(start) &&
-        t.date.isBefore(end),
-  );
+  final current = entries.where((t) => contributesToMonth(t, today));
   int total(TransactionType type) =>
       current.where((t) => t.type == type).fold(0, (s, t) => s + t.amountCop);
   final monthlyIncomeCop = total(TransactionType.baseIncome);
@@ -59,4 +52,28 @@ DashboardSummary summarizeMonth(
     availableCop: availableCop,
     committedPercent: committedPercent,
   );
+}
+
+bool contributesToMonth(TransactionItem item, DateTime today) =>
+    item.status == MovementStatus.confirmed &&
+    !item.date.isBefore(DateTime(today.year, today.month)) &&
+    item.date.isBefore(DateTime(today.year, today.month, today.day + 1));
+
+int previewExpenseBalance({
+  required int availableCop,
+  required int amountCop,
+  required DateTime date,
+  required DateTime today,
+  TransactionItem? original,
+}) {
+  final restored =
+      original != null &&
+          original.type == TransactionType.expense &&
+          contributesToMonth(original, today)
+      ? original.amountCop
+      : 0;
+  final included =
+      !date.isBefore(DateTime(today.year, today.month)) &&
+      date.isBefore(DateTime(today.year, today.month, today.day + 1));
+  return availableCop + restored - (included ? amountCop : 0);
 }

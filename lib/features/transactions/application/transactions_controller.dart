@@ -50,7 +50,7 @@ class TransactionsController extends Notifier<TransactionsState> {
       final items = await ref
           .read(transactionRepositoryProvider)
           .getTransactions();
-      state = TransactionsState(items: items, isLoading: false);
+      state = state.copyWith(items: items, isLoading: false);
     } catch (error) {
       state = state.copyWith(
         isLoading: false,
@@ -69,7 +69,7 @@ class TransactionsController extends Notifier<TransactionsState> {
     String note = '',
     bool isAutomatic = false,
   }) async {
-    if (state.isSaving) return;
+    if (state.isSaving || state.isDeleting) return;
     state = state.copyWith(isSaving: true, clearError: true);
     final repo = ref.read(transactionRepositoryProvider);
     try {
@@ -87,9 +87,9 @@ class TransactionsController extends Notifier<TransactionsState> {
           note: note,
         ),
       );
-      final updated = await repo.getTransactions();
-      state = state.copyWith(items: updated, isSaving: false);
-      await _evaluateBudgetAlerts();
+      await loadTransactions();
+      await evaluateBudgetAlerts();
+      state = state.copyWith(isSaving: false);
     } catch (error, stackTrace) {
       final failure = FinanceFailure.from(error);
       state = state.copyWith(isSaving: false, errorMessage: failure.message);
@@ -98,14 +98,14 @@ class TransactionsController extends Notifier<TransactionsState> {
   }
 
   Future<void> updateTransaction(TransactionItem item) async {
-    if (state.isSaving) return;
+    if (state.isSaving || state.isDeleting) return;
     state = state.copyWith(isSaving: true, clearError: true);
     final repo = ref.read(transactionRepositoryProvider);
     try {
       await repo.updateTransaction(item);
-      final updated = await repo.getTransactions();
-      state = state.copyWith(items: updated, isSaving: false);
-      await _evaluateBudgetAlerts();
+      await loadTransactions();
+      await evaluateBudgetAlerts();
+      state = state.copyWith(isSaving: false);
     } catch (error, stackTrace) {
       final failure = FinanceFailure.from(error);
       state = state.copyWith(isSaving: false, errorMessage: failure.message);
@@ -114,13 +114,13 @@ class TransactionsController extends Notifier<TransactionsState> {
   }
 
   Future<void> deleteTransaction(String id) async {
-    if (state.isDeleting) return;
+    if (state.isSaving || state.isDeleting) return;
     state = state.copyWith(isDeleting: true, clearError: true);
     final repo = ref.read(transactionRepositoryProvider);
     try {
       await repo.deleteTransaction(id);
-      final updated = await repo.getTransactions();
-      state = state.copyWith(items: updated, isDeleting: false);
+      await loadTransactions();
+      state = state.copyWith(isDeleting: false);
     } catch (error, stackTrace) {
       final failure = FinanceFailure.from(error);
       state = state.copyWith(isDeleting: false, errorMessage: failure.message);
@@ -140,11 +140,16 @@ class TransactionsController extends Notifier<TransactionsState> {
     state = TransactionsState(items: updated, isLoading: false);
   }
 
-  Future<void> _evaluateBudgetAlerts() async {
-    final settings = await ref.read(settingsRepositoryProvider).getSettings();
-    await ref
-        .read(budgetAlertCoordinatorProvider)
-        .evaluate(enabled: settings.budget80AlertEnabled);
+  Future<void> evaluateBudgetAlerts() async {
+    try {
+      final settings = await ref.read(settingsRepositoryProvider).getSettings();
+      await ref
+          .read(budgetAlertCoordinatorProvider)
+          .evaluate(enabled: settings.budget80AlertEnabled);
+    } catch (_) {
+      // A notification/database read failure cannot undo a saved movement.
+      // Evaluation is retried on the next resume or financial operation.
+    }
   }
 }
 
@@ -171,6 +176,8 @@ final combinedMovementsProvider = Provider<List<TransactionItem>>((ref) {
       isAutomatic: false,
       recurrence: inc.recurrence,
       note: inc.note,
+      source: inc.source,
+      parentId: inc.parentId,
     ),
   );
 

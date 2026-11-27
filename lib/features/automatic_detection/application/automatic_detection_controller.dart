@@ -56,7 +56,7 @@ class AutomaticDetectionController extends Notifier<AutomaticDetectionState> {
     try {
       final enabled = await repo.isEnabled();
       final items = await repo.getPendingMovements();
-      state = AutomaticDetectionState(
+      state = state.copyWith(
         isEnabled: enabled,
         pending: items,
         isLoading: false,
@@ -90,7 +90,6 @@ class AutomaticDetectionController extends Notifier<AutomaticDetectionState> {
       await ref
           .read(transactionsControllerProvider.notifier)
           .loadTransactions();
-      await load();
       return;
     }
     await ref
@@ -157,6 +156,10 @@ class AutomaticDetectionController extends Notifier<AutomaticDetectionState> {
     state = state.copyWith(isSaving: true, clearError: true);
     try {
       await operation();
+      await load();
+      await ref
+          .read(transactionsControllerProvider.notifier)
+          .evaluateBudgetAlerts();
       state = state.copyWith(isSaving: false);
     } catch (error, stackTrace) {
       final failure = FinanceFailure.from(error);

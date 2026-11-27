@@ -99,6 +99,13 @@ class Ledger {
     final id = t.id.isEmpty ? await newId() : t.id;
     final selector = db.select(db.movements)..where((m) => m.id.equals(id));
     final previous = update ? await selector.getSingle() : null;
+    if (previous?.parent != null &&
+        t.type != TransactionType.baseIncome &&
+        t.recurrence != RecurrenceFrequency.none) {
+      throw const FormatException(
+        'Edita la programación original para cambiar próximas repeticiones',
+      );
+    }
     final scheduleChanged =
         previous == null ||
         previous.frequency != t.recurrence.name ||
@@ -125,6 +132,12 @@ class Ledger {
       nextDue: Value(next),
       created: previous?.created ?? now(),
       updated: now(),
+      parent: t.type == TransactionType.baseIncome
+          ? const Value(null)
+          : const Value.absent(),
+      scheduled: t.type == TransactionType.baseIncome
+          ? const Value(null)
+          : const Value.absent(),
     );
     if (update) {
       await (db.update(db.movements)..where((m) => m.id.equals(id))).write(row);
@@ -141,6 +154,7 @@ class Ledger {
     updatedAt: m.updated,
     status: MovementStatus.values.byName(m.status),
     source: MovementSource.values.byName(m.source),
+    parentId: m.parent,
     id: m.id,
     description: m.description,
     amountCop: m.amount,
@@ -162,6 +176,8 @@ class Ledger {
     note: m.note,
     recurrence: RecurrenceFrequency.values.byName(m.frequency),
     nextOccurrence: m.nextDue,
+    parentId: m.parent,
+    source: MovementSource.values.byName(m.source),
   );
   TransactionItem incomeEntry(AdditionalIncome i) => TransactionItem(
     id: i.id,
@@ -174,6 +190,8 @@ class Ledger {
     isAutomatic: false,
     recurrence: i.recurrence,
     note: i.note,
+    parentId: i.parentId,
+    source: i.source,
   );
 
   /// A base salary is one dated ledger entry per month. Freeze earlier

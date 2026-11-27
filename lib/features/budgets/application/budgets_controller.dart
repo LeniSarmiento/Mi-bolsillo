@@ -51,7 +51,7 @@ class BudgetsController extends Notifier<BudgetsState> {
     state = state.copyWith(isLoading: true, clearError: true);
     try {
       final items = await ref.read(budgetRepositoryProvider).getBudgets();
-      state = BudgetsState(items: items, isLoading: false);
+      state = state.copyWith(items: items, isLoading: false);
     } catch (error) {
       state = state.copyWith(
         isLoading: false,
@@ -68,7 +68,7 @@ class BudgetsController extends Notifier<BudgetsState> {
     required bool alertAt80,
     required bool alertAt100,
   }) async {
-    if (state.isSaving) return;
+    if (state.isSaving || state.isDeleting) return;
     state = state.copyWith(isSaving: true, clearError: true);
     final repo = ref.read(budgetRepositoryProvider);
     final budget = BudgetItem(
@@ -85,12 +85,11 @@ class BudgetsController extends Notifier<BudgetsState> {
       } else {
         await repo.updateBudget(budget);
       }
-      final updated = await repo.getBudgets();
-      state = state.copyWith(items: updated, isSaving: false);
-      final settings = await ref.read(settingsRepositoryProvider).getSettings();
+      await loadBudgets();
       await ref
-          .read(budgetAlertCoordinatorProvider)
-          .evaluate(enabled: settings.budget80AlertEnabled);
+          .read(transactionsControllerProvider.notifier)
+          .evaluateBudgetAlerts();
+      state = state.copyWith(isSaving: false);
     } catch (error, stackTrace) {
       final failure = FinanceFailure.from(error);
       state = state.copyWith(isSaving: false, errorMessage: failure.message);
@@ -99,13 +98,13 @@ class BudgetsController extends Notifier<BudgetsState> {
   }
 
   Future<void> deleteBudget(String id) async {
-    if (state.isDeleting) return;
+    if (state.isSaving || state.isDeleting) return;
     state = state.copyWith(isDeleting: true, clearError: true);
     final repo = ref.read(budgetRepositoryProvider);
     try {
       await repo.deleteBudget(id);
-      final updated = await repo.getBudgets();
-      state = state.copyWith(items: updated, isDeleting: false);
+      await loadBudgets();
+      state = state.copyWith(isDeleting: false);
     } catch (error, stackTrace) {
       final failure = FinanceFailure.from(error);
       state = state.copyWith(isDeleting: false, errorMessage: failure.message);

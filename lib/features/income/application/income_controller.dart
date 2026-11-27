@@ -52,7 +52,7 @@ class IncomeController extends Notifier<IncomeState> {
       final items = await ref
           .read(incomeRepositoryProvider)
           .getAdditionalIncomes();
-      state = IncomeState(items: items, isLoading: false);
+      state = state.copyWith(items: items, isLoading: false);
     } catch (error) {
       state = state.copyWith(
         isLoading: false,
@@ -70,7 +70,7 @@ class IncomeController extends Notifier<IncomeState> {
     required String note,
     required RecurrenceFrequency recurrence,
   }) async {
-    if (state.isSaving) return;
+    if (state.isSaving || state.isDeleting) return;
     state = state.copyWith(isSaving: true, clearError: true);
     final repo = ref.read(incomeRepositoryProvider);
     try {
@@ -86,8 +86,8 @@ class IncomeController extends Notifier<IncomeState> {
           recurrence: recurrence,
         ),
       );
-      final updated = await repo.getAdditionalIncomes();
-      state = state.copyWith(items: updated, isSaving: false);
+      await loadIncomes();
+      state = state.copyWith(isSaving: false);
     } catch (error, stackTrace) {
       final failure = FinanceFailure.from(error);
       state = state.copyWith(isSaving: false, errorMessage: failure.message);
@@ -96,13 +96,13 @@ class IncomeController extends Notifier<IncomeState> {
   }
 
   Future<void> updateIncome(AdditionalIncome income) async {
-    if (state.isSaving) return;
+    if (state.isSaving || state.isDeleting) return;
     state = state.copyWith(isSaving: true, clearError: true);
     final repo = ref.read(incomeRepositoryProvider);
     try {
       await repo.updateAdditionalIncome(income);
-      final updated = await repo.getAdditionalIncomes();
-      state = state.copyWith(items: updated, isSaving: false);
+      await loadIncomes();
+      state = state.copyWith(isSaving: false);
     } catch (error, stackTrace) {
       final failure = FinanceFailure.from(error);
       state = state.copyWith(isSaving: false, errorMessage: failure.message);
@@ -111,13 +111,13 @@ class IncomeController extends Notifier<IncomeState> {
   }
 
   Future<void> deleteIncome(String id) async {
-    if (state.isDeleting) return;
+    if (state.isSaving || state.isDeleting) return;
     state = state.copyWith(isDeleting: true, clearError: true);
     final repo = ref.read(incomeRepositoryProvider);
     try {
       await repo.deleteAdditionalIncome(id);
-      final updated = await repo.getAdditionalIncomes();
-      state = state.copyWith(items: updated, isDeleting: false);
+      await loadIncomes();
+      state = state.copyWith(isDeleting: false);
     } catch (error, stackTrace) {
       final failure = FinanceFailure.from(error);
       state = state.copyWith(isDeleting: false, errorMessage: failure.message);

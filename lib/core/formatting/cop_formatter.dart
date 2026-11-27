@@ -35,8 +35,12 @@ abstract final class CopFormatter {
 
   /// Parses user-entered COP text into an integer. Returns null if empty/invalid.
   static int? parseDigits(String raw) {
-    final digitsOnly = raw.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digitsOnly.isEmpty) return null;
+    final match = RegExp(
+      r'^(?:COP\s*)?\$?\s*((?:\d{1,3}(?:\.\d{3})+|\d+))(?:,00)?(?:\s*COP)?$',
+      caseSensitive: false,
+    ).firstMatch(raw.trim());
+    if (match == null) return null;
+    final digitsOnly = match.group(1)!.replaceAll('.', '');
     final value = int.tryParse(digitsOnly);
     return value != null && value <= 9007199254740991 ? value : null;
   }
@@ -51,12 +55,36 @@ class _CopThousandsInputFormatter extends TextInputFormatter {
     TextEditingValue oldValue,
     TextEditingValue newValue,
   ) {
-    final digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.isEmpty) {
+    if (newValue.text.isEmpty) {
       return const TextEditingValue(text: '');
     }
-    final parsed = CopFormatter.parseDigits(digits);
-    if (parsed == null) return oldValue;
+    var parsed = CopFormatter.parseDigits(newValue.text);
+    // A single digit edit can temporarily break existing thousands groups.
+    // Only normalize that edit; pasted malformed/decimal text stays invalid
+    // and visible so the form cannot silently save a different amount.
+    if (parsed == null && CopFormatter.parseDigits(oldValue.text) != null) {
+      var prefix = 0;
+      while (prefix < oldValue.text.length &&
+          prefix < newValue.text.length &&
+          oldValue.text[prefix] == newValue.text[prefix]) {
+        prefix++;
+      }
+      var oldEnd = oldValue.text.length;
+      var newEnd = newValue.text.length;
+      while (oldEnd > prefix &&
+          newEnd > prefix &&
+          oldValue.text[oldEnd - 1] == newValue.text[newEnd - 1]) {
+        oldEnd--;
+        newEnd--;
+      }
+      final inserted = newValue.text.substring(prefix, newEnd);
+      final removed = oldEnd - prefix;
+      if ((RegExp(r'^\d$').hasMatch(inserted) && removed <= 1) ||
+          (inserted.isEmpty && removed == 1)) {
+        parsed = CopFormatter.parseDigits(newValue.text.replaceAll('.', ''));
+      }
+    }
+    if (parsed == null) return newValue;
     final formatted = CopFormatter.formatDigits(parsed);
     return TextEditingValue(
       text: formatted,

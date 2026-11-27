@@ -29,7 +29,18 @@ class LocalTransactions implements TransactionRepository {
   Future<TransactionItem> updateTransaction(TransactionItem item) =>
       ledger.save(item, update: true);
   @override
-  Future<void> deleteTransaction(String id) => ledger.remove(id);
+  Future<void> deleteTransaction(String id) async {
+    final entry = await (ledger.db.select(
+      ledger.db.movements,
+    )..where((m) => m.id.equals(id))).getSingleOrNull();
+    if (entry?.kind == 'baseIncome') {
+      throw const FormatException(
+        'Modifica el ingreso base desde Perfil; no se elimina del historial',
+      );
+    }
+    await ledger.remove(id);
+  }
+
   @override
   Future<void> clearAll() => (ledger.db.delete(
     ledger.db.movements,
