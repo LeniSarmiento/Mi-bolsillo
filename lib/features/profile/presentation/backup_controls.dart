@@ -1,11 +1,15 @@
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../../app/providers.dart';
 import '../../../core/widgets/app_snackbar.dart';
+import '../../../core/security/backup_cipher.dart';
+import '../../../core/security/backup_password_dialog.dart';
+import '../../../core/security/device_security.dart';
 import '../../../data/local_backup.dart';
 import '../../../data/local_detection.dart';
 import '../../../data/finance_database.dart';
@@ -25,6 +29,12 @@ class _BackupControlsState extends ConsumerState<BackupControls> {
   bool _busy = false;
   Future<void> _run(Future<void> Function() operation) async {
     if (_busy) return;
+    if (!await ref
+            .read(securitySessionProvider.notifier)
+            .unlock('Autorizar copia de seguridad') ||
+        !mounted) {
+      return;
+    }
     final activity = ref.read(backupActivityProvider.notifier);
     if (ref.read(backupActivityProvider)) return;
     setState(() => _busy = true);
@@ -67,15 +77,23 @@ class _BackupControlsState extends ConsumerState<BackupControls> {
   }
 
   Future<void> _export() => _run(() async {
+    final password = await requestBackupPassword(context, creating: true);
+    if (password == null || !mounted) return;
     final db = ref.read(databaseProvider);
     await LocalDetection(
       ref.read(ledgerProvider),
       ref.read(bridgeProvider),
     ).importQueue();
-    final bytes = await LocalBackup(db).export();
+    final plaintext = await LocalBackup(db).export();
+    late final Uint8List bytes;
+    try {
+      bytes = await BackupCipher().encrypt(plaintext, password);
+    } finally {
+      plaintext.fillRange(0, plaintext.length, 0);
+    }
     final saved = await FilePicker.saveFile(
-      fileName: 'mi-bolsillo-${DateTime.now().millisecondsSinceEpoch}.json',
-      mimeType: 'application/json',
+      fileName: 'mi-bolsillo-${DateTime.now().millisecondsSinceEpoch}.mbk',
+      mimeType: 'application/octet-stream',
       bytes: bytes,
     );
     if (mounted && saved != null) {
@@ -83,30 +101,62 @@ class _BackupControlsState extends ConsumerState<BackupControls> {
     }
   });
 
-  Future<void> _import() => _run(() async {
-    final files = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['json'],
-    );
-    if (files.isEmpty) return;
-    final buffer = BytesBuilder(copy: false);
-    await for (final chunk in files.single.readAsByteStream()) {
-      if (buffer.length + chunk.length > LocalBackup.maxBytes) {
-        throw const FormatException('La copia supera el límite de 20 MB');
+  Future<Uint8List?> _readBackup() async {
+    try {
+      final files = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['mbk', 'json'],
+      );
+      if (files.isEmpty) return null;
+      if (files.length != 1) {
+        throw const FormatException('Selecciona una sola copia de seguridad.');
       }
-      buffer.add(chunk);
+      final buffer = BytesBuilder(copy: false);
+      await for (final chunk in files.single.readAsByteStream()) {
+        if (buffer.length + chunk.length > BackupCipher.maxFileSize) {
+          throw const FormatException('La copia supera el límite de 20 MB');
+        }
+        buffer.add(chunk);
+      }
+      return buffer.takeBytes();
+    } finally {
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          // The Android picker caches selected files, including legacy JSON.
+          // Remove only its private copies, even if reading fails or is cancelled.
+          await FilePicker.clearTemporaryFiles();
+        } catch (_) {
+          // Best effort: never mask the read error with a plugin cleanup error.
+        }
+      }
     }
-    final bytes = buffer.takeBytes();
+  }
+
+  Future<void> _import() => _run(() async {
+    var bytes = await _readBackup();
+    if (bytes == null) return;
+    final encrypted = BackupCipher.isEncrypted(bytes);
+    if (encrypted) {
+      if (!mounted) return;
+      final password = await requestBackupPassword(context, creating: false);
+      if (password == null || !mounted) return;
+      bytes = await BackupCipher().decrypt(bytes, password);
+    }
     final db = ref.read(databaseProvider);
     final backup = LocalBackup(db);
-    final archive = backup.prepare(bytes);
+    late final BackupArchive archive;
+    try {
+      archive = backup.prepare(bytes);
+    } finally {
+      bytes.fillRange(0, bytes.length, 0);
+    }
     if (!mounted) return;
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('¿Restaurar copia local?'),
         content: Text(
-          'Reemplazará los datos actuales por ${archive.movements.length} movimientos y ${archive.budgets.length} presupuestos. Exporta primero si deseas conservar tus cambios actuales. La detección y los recordatorios quedarán pausados.',
+          '${encrypted ? '' : 'Esta copia antigua no tiene protección contra modificaciones. Restáurala solo si confías en su origen.\n\n'}Reemplazará los datos actuales por ${archive.movements.length} movimientos y ${archive.budgets.length} presupuestos. Exporta primero si deseas conservar tus cambios actuales. La detección y los recordatorios quedarán pausados.',
         ),
         actions: [
           TextButton(
@@ -121,6 +171,12 @@ class _BackupControlsState extends ConsumerState<BackupControls> {
       ),
     );
     if (accepted != true || !mounted) return;
+    if (!await ref
+            .read(securitySessionProvider.notifier)
+            .unlock('Restaurar datos financieros') ||
+        !mounted) {
+      return;
+    }
     final bridge = ref.read(bridgeProvider);
     final wasEnabled = await bridge.enabled();
     await bridge.setEnabled(false);
@@ -171,9 +227,9 @@ class _BackupControlsState extends ConsumerState<BackupControls> {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      const Text('Copia de seguridad local'),
+      const Text('Copia de seguridad cifrada'),
       const Text(
-        'El archivo contiene tus datos financieros sin cifrar. Elige una carpeta privada en el dispositivo. CSV y PDF son reportes, no copias restaurables.',
+        'La copia se protege con tu contraseña antes de guardarse. Elige una carpeta del dispositivo: el selector también puede ofrecer servicios en la nube. Conserva tu contraseña; no podemos recuperarla. CSV y PDF son reportes sin cifrar.',
       ),
       OutlinedButton.icon(
         onPressed: _busy ? null : _export,

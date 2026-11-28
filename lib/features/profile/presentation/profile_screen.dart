@@ -1,6 +1,7 @@
 import 'package:material_ui/material_ui.dart';
 
 import 'backup_controls.dart';
+import '../../../core/security/device_security.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -59,10 +60,16 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final ok = await ConfirmDeleteDialog.show(
       context,
       title: '¿Borrar datos locales y vaciar listas?',
-      description: 'Se eliminarán los movimientos, presupuestos y ajustes de este dispositivo. Esta acción es permanente.',
+      description: 'Se eliminarán los movimientos, presupuestos y ajustes de esta aplicación. Las copias y reportes exportados deben eliminarse por separado. Esta acción no se puede deshacer.',
       confirmLabel: 'Borrar todo',
     );
     if (!ok || !mounted) return;
+    if (!await ref
+            .read(securitySessionProvider.notifier)
+            .unlock('Borrar todos los datos financieros') ||
+        !mounted) {
+      return;
+    }
 
     setState(() => _isClearing = true);
     final db = ref.read(databaseProvider);
