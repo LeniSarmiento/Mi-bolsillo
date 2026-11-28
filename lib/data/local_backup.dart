@@ -5,6 +5,7 @@ import '../features/budgets/domain/budget_item.dart';
 import '../features/income/domain/additional_income.dart';
 import '../features/transactions/domain/transaction_item.dart';
 import 'finance_database.dart';
+import 'recurrence_limits.dart';
 
 /// Portable local backup. Never uploads data; the user chooses the file location.
 class LocalBackup {
@@ -54,7 +55,9 @@ class LocalBackup {
       }
       List<T> rows<T>(String name, T Function(Map<String, dynamic>) parse) {
         final source = data[name] as List;
-        if (source.length > 100000) throw const FormatException();
+        if (source.length > RecurrenceLimits.maxRows) {
+          throw const FormatException();
+        }
         return List.unmodifiable(
           source.map((r) => parse(Map<String, dynamic>.from(r as Map))),
         );
@@ -74,6 +77,10 @@ class LocalBackup {
       final movements = rows('movements', (r) {
         require(money(r['amount']));
         final m = Movement.fromJson(r);
+        final now = DateTime.now();
+        RecurrenceLimits.date(m.occurred, now);
+        if (m.scheduled != null) RecurrenceLimits.date(m.scheduled!, now);
+        if (m.nextDue != null) RecurrenceLimits.date(m.nextDue!, now);
         require(
           m.id.isNotEmpty &&
               m.description.trim().isNotEmpty &&
@@ -94,7 +101,18 @@ class LocalBackup {
       final byId = {for (final m in movements) m.id: m};
       final salaryMonths = <String>{};
       var activeSalaries = 0;
+      var activeRules = 0;
+      var catchUp = 0;
       for (final m in movements) {
+        if (m.nextDue != null) {
+          activeRules++;
+          catchUp += RecurrenceLimits.catchUp(
+            m.nextDue!,
+            RecurrenceFrequency.values.byName(m.frequency),
+            DateTime.now(),
+          );
+          RecurrenceLimits.totals(activeRules, catchUp);
+        }
         if (m.kind == 'baseIncome') {
           require(m.status == 'confirmed' && m.category == 'Salario');
           require(m.occurred.day == 1);

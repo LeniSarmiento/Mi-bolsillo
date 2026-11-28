@@ -7,13 +7,18 @@ import 'package:mi_bolsillo/data/finance_database.dart';
 import 'package:mi_bolsillo/data/ledger.dart';
 import 'package:mi_bolsillo/data/local_detection.dart';
 import 'package:mi_bolsillo/data/local_repositories.dart';
+import 'package:mi_bolsillo/core/security/device_security.dart';
 import 'package:mi_bolsillo/features/budgets/data/mock_budget_repository.dart';
 import 'package:mi_bolsillo/features/income/data/mock_income_repository.dart';
 import 'package:mi_bolsillo/features/profile/domain/user_settings.dart';
 import 'package:mi_bolsillo/features/transactions/data/mock_transaction_repository.dart';
 import 'package:mi_bolsillo/features/transactions/domain/transaction_item.dart';
 
-Future<FinanceDatabase> pumpFinance(WidgetTester tester, String route) async {
+Future<FinanceDatabase> pumpFinance(
+  WidgetTester tester,
+  String route, {
+  DeviceSecurity? security,
+}) async {
   final db = FinanceDatabase(NativeDatabase.memory());
   addTearDown(db.close);
   final ledger = Ledger(db);
@@ -49,6 +54,9 @@ Future<FinanceDatabase> pumpFinance(WidgetTester tester, String route) async {
       overrides: [
         databaseProvider.overrideWithValue(db),
         bridgeProvider.overrideWithValue(_OfflineBridge()),
+        deviceSecurityProvider.overrideWithValue(
+          security ?? _AuthorizedSecurity(),
+        ),
       ],
       child: MiBolsilloApp(initialLocation: route),
     ),
@@ -60,6 +68,11 @@ Future<FinanceDatabase> pumpFinance(WidgetTester tester, String route) async {
 class _OfflineBridge extends NotificationBridge {
   @override
   bool get supported => false;
+}
+
+class _AuthorizedSecurity extends DeviceSecurity {
+  @override
+  Future<bool> authenticate(String reason) async => true;
 }
 
 class _SeedBridge extends _OfflineBridge {

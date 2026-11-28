@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../features/income/domain/additional_income.dart';
 import '../features/transactions/domain/transaction_item.dart';
 import 'finance_database.dart';
+import 'recurrence_limits.dart';
 
 DateTime dayOf(DateTime d) => DateTime(d.year, d.month, d.day);
 DateTime nextDate(
@@ -43,6 +44,15 @@ class Ledger {
     final due = await (db.select(
       db.movements,
     )..where((m) => m.nextDue.isSmallerOrEqualValue(today))).get();
+    var planned = 0;
+    for (final template in due) {
+      planned += RecurrenceLimits.catchUp(
+        template.nextDue!,
+        RecurrenceFrequency.values.byName(template.frequency),
+        today,
+      );
+      RecurrenceLimits.totals(due.length, planned);
+    }
     for (final template in due) {
       final freq = RecurrenceFrequency.values.byName(template.frequency);
       var date = template.nextDue!;
@@ -97,6 +107,7 @@ class Ledger {
     TransactionItem t, {
     bool update = false,
   }) => db.transaction(() async {
+    RecurrenceLimits.date(t.date, now());
     if (t.amountCop <= 0 ||
         t.amountCop > 9007199254740991 ||
         t.description.trim().isEmpty) {
@@ -159,6 +170,20 @@ class Ledger {
     } else {
       await db.into(db.movements).insert(row);
     }
+    if (t.recurrence != RecurrenceFrequency.none) {
+      final rules = await (db.select(
+        db.movements,
+      )..where((m) => m.nextDue.isNotNull())).get();
+      var planned = 0;
+      for (final rule in rules) {
+        planned += RecurrenceLimits.catchUp(
+          rule.nextDue!,
+          RecurrenceFrequency.values.byName(rule.frequency),
+          now(),
+        );
+      }
+      RecurrenceLimits.totals(rules.length, planned);
+    }
     return t.copyWith(id: id);
   });
 
@@ -193,6 +218,13 @@ class Ledger {
       recurrence: future.recurrence,
       note: future.note,
       source: MovementSource.recurring,
+    );
+    // Replacement consumes the same rule slot; rollback restores the original
+    // if any later validation or write fails.
+    await (db.update(
+      db.movements,
+    )..where((m) => m.id.equals(original.id))).write(
+      const MovementsCompanion(frequency: Value('none'), nextDue: Value(null)),
     );
     await save(replacement);
     final sameSchedule =
