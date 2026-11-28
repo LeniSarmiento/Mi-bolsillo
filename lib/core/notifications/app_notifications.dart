@@ -111,9 +111,7 @@ class LocalAppNotifications implements AppNotifications {
 
     await _plugin.show(
       id: id,
-      title: exhausted
-          ? 'Presupuesto de $category agotado'
-          : 'Presupuesto de $category al $percentUsed %',
+      title: 'Revisa tus presupuestos',
       body: exhausted
           ? 'Revisa tus gastos y ajusta tu plan para este periodo.'
           : 'Estás cerca del límite que configuraste para este periodo.',
@@ -124,6 +122,7 @@ class LocalAppNotifications implements AppNotifications {
           channelDescription: 'Avisos al acercarse o llegar a un límite',
           importance: Importance.high,
           priority: Priority.high,
+          visibility: NotificationVisibility.secret,
         ),
       ),
       payload: 'budgets',

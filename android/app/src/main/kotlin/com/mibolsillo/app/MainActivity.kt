@@ -3,11 +3,21 @@ package com.mibolsillo.app
 import android.content.ComponentName
 import android.content.Intent
 import android.provider.Settings
+import android.os.Bundle
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
+    private val authentication by lazy { DeviceAuthentication(this) }
+    override fun onCreate(savedInstanceState: Bundle?) {
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        super.onCreate(savedInstanceState)
+    }
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        if (!authentication.activityResult(requestCode, resultCode)) super.onActivityResult(requestCode, resultCode, data)
+    }
     private fun granted(): Boolean {
         val permitted = Settings.Secure.getString(contentResolver, "enabled_notification_listeners").orEmpty()
         val component = ComponentName(this, PurchaseListener::class.java)
@@ -16,6 +26,8 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.mibolsillo.app/security")
+            .setMethodCallHandler(authentication::handle)
         val channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.mibolsillo.app/detections")
         DetectionQueue.onArrival = { channel.invokeMethod("arrival", null) }
         channel.setMethodCallHandler { call, result ->
@@ -43,6 +55,7 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        authentication.dispose()
         DetectionQueue.onArrival = null
         super.cleanUpFlutterEngine(flutterEngine)
     }

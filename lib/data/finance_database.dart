@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
-import 'package:drift_flutter/drift_flutter.dart';
+
+import 'database_connection.dart';
 
 import '../features/transactions/domain/transaction_item.dart';
 import '../features/income/domain/additional_income.dart';
@@ -86,21 +87,7 @@ class BudgetAlertReceipts extends Table {
 )
 class FinanceDatabase extends _$FinanceDatabase {
   FinanceDatabase(super.e);
-  FinanceDatabase.local()
-    : super(
-        driftDatabase(
-          name: 'mi_bolsillo',
-          web: DriftWebOptions(
-            onResult: (result) {
-              if (result.chosenImplementation.name == 'inMemory') {
-                throw StateError('Almacenamiento persistente no disponible');
-              }
-            },
-            sqlite3Wasm: Uri.parse('sqlite3.wasm'),
-            driftWorker: Uri.parse('drift_worker.js'),
-          ),
-        ),
-      );
+  FinanceDatabase.local() : super(openFinanceConnection());
   @override
   int get schemaVersion => 3;
   @override
@@ -123,7 +110,11 @@ class FinanceDatabase extends _$FinanceDatabase {
         await m.createTable(budgetAlertReceipts);
       }
     },
-    beforeOpen: (_) async => customStatement('PRAGMA foreign_keys = ON'),
+    beforeOpen: (_) async {
+      await customStatement('PRAGMA foreign_keys = ON');
+      await customStatement('PRAGMA secure_delete = ON');
+      await customStatement('PRAGMA temp_store = MEMORY');
+    },
   );
   Future<void> erase() => transaction(() async {
     await delete(movements).go();

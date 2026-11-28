@@ -12,25 +12,38 @@ internal object DetectionQueue {
 
     fun optedIn(c: Context) = prefs(c).getBoolean("enabled", false)
     fun enable(c: Context, value: Boolean) { check(prefs(c).edit().putBoolean("enabled", value).commit()) }
-    fun erase(c: Context) { check(prefs(c).edit().clear().commit()) }
+    @Synchronized fun erase(c: Context) {
+        check(prefs(c).edit().clear().commit())
+        LocalVault.forgetQueueKey()
+    }
 
-    fun add(c: Context, p: Purchase) {
+    @Synchronized fun add(c: Context, p: Purchase) {
         val store = prefs(c)
         if (!optedIn(c) || store.contains(p.id) || store.all.size >= 513) return
         val data = JSONObject().put("id", p.id).put("merchant", p.merchant).put("amount", p.amount)
             .put("date", p.date).put("app", p.app)
         p.legacyId?.let { data.put("legacyId", it) }
-        if (store.edit().putString(p.id, data.toString()).commit()) onArrival?.invoke()
+        if (store.edit().putString(p.id, LocalVault.encryptQueue(p.id, data.toString())).commit()) onArrival?.invoke()
     }
 
-    fun peek(c: Context) = prefs(c).all.values.filterIsInstance<String>().map {
-        val data = JSONObject(it)
+    @Synchronized fun peek(c: Context): List<Map<String, Any>> {
+      val store = prefs(c)
+      // Upgrade legacy plaintext entries atomically before returning their data.
+      val legacy = store.all.filterValues { it is String && !it.startsWith("v1:") }
+      if (legacy.isNotEmpty()) {
+          val edit = store.edit()
+          legacy.forEach { (id, value) -> edit.putString(id, LocalVault.encryptQueue(id, value as String)) }
+          check(edit.commit())
+      }
+      return store.all.filterValues { it is String }.map { (id, value) ->
+        val data = JSONObject(LocalVault.decryptQueue(id, value as String))
         mapOf("id" to data.getString("id"), "merchant" to data.getString("merchant"),
             "amount" to data.getLong("amount"), "date" to data.getLong("date"), "app" to data.getString("app"),
             "legacyId" to data.optString("legacyId", ""))
+      }
     }
 
-    fun ack(c: Context, keys: List<String>) {
+    @Synchronized fun ack(c: Context, keys: List<String>) {
         val edit = prefs(c).edit()
         keys.filter { it.matches(Regex("[a-f0-9]{64}")) }.forEach { edit.remove(it) }
         check(edit.commit())
@@ -47,6 +60,10 @@ class PurchaseListener : NotificationListenerService() {
         val title = extras.getCharSequence(Notification.EXTRA_TITLE)
         val text = listOfNotNull(title, body).joinToString(" ").take(1200)
         val posted = notice.`when`.takeIf { it > 0 } ?: sbn.postTime
-        PurchaseParser.parse(sbn.packageName, sbn.key, posted, text)?.let { DetectionQueue.add(this, it) }
+        try {
+            PurchaseParser.parse(sbn.packageName, sbn.key, posted, text)?.let { DetectionQueue.add(this, it) }
+        } catch (_: Exception) {
+            // Keystore can be unavailable before unlock. Never fall back to plaintext or log content.
+        }
     }
 }
