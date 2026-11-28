@@ -1,17 +1,17 @@
 # Mi Bolsillo
 
-Aplicación Flutter de finanzas personales en pesos colombianos. El primer uso comienza con una base vacía y un formulario de ingreso mensual. Las pantallas de Stitch consumen repositorios locales mediante Riverpod. Android guarda la base SQLite en el directorio privado de la aplicación. La versión web usa SQLite con almacenamiento del navegador para el origen donde se abre.
+Aplicación Flutter de finanzas personales en pesos colombianos. El primer uso comienza con una base vacía y un formulario de ingreso mensual. Las pantallas de Stitch consumen repositorios locales mediante Riverpod. Android guarda SQLite cifrada en el directorio privado y requiere el bloqueo del dispositivo. La versión web usa SQLite con almacenamiento del navegador para el origen donde se abre; no dispone del cifrado de base, Keystore ni bloqueo de Android.
 
 ## Ejecutar
 
-Probado con Flutter 3.50.1 y Dart 3.14.0. Mejoras de calidad en `feature/finance-quality`:
+Probado con Flutter 3.50.1 y Dart 3.14.0. Mejoras de seguridad en `feature/security-hardening`:
 
 ```sh
 flutter pub get
 flutter run -d chrome
 ```
 
-Para Android, configura el SDK y conecta un dispositivo o emulador con depuración habilitada. Usa el identificador de `flutter devices`.
+Para Android, configura el SDK y conecta un dispositivo o emulador con depuración habilitada. Configura también un PIN, patrón o contraseña de bloqueo en Android; la app exige confirmar la identidad antes de abrir los datos. Usa el identificador de `flutter devices`.
 
 ```sh
 flutter run -d <id-android>
@@ -31,6 +31,7 @@ El APK debug se genera en `build/app/outputs/flutter-apk/app-debug.apk`. La vers
 - Estas operaciones se ejecutan en una transacción. Los miembros históricos apuntan a la plantilla activa mediante `parent`; `scheduled` conserva el día original de una plantilla mensual para pasar por febrero sin desplazar el día 29, 30 o 31 de los siguientes meses. No se añaden columnas ni cambia el esquema 3. Una segunda escritura sobre una programación reemplazada se rechaza y requiere recargar.
 - Los presupuestos semanales empiezan el lunes. Los quincenales cubren del 1 al 15 y del 16 al final del mes. El resumen mensual consolidado solo incluye los presupuestos mensuales.
 - Movimientos exporta la lista filtrada a CSV y Análisis genera un PDF del periodo seleccionado. Los archivos se guardan en el destino que el usuario elige.
+- La escritura y la restauración admiten fechas desde 2000 hasta el final del año actual + 20, hasta 200 reglas activas y como máximo 10.000 repeticiones vencidas en una operación. La generación comprueba el trabajo total antes de escribir y rechaza cargas excesivas sin insertar movimientos parciales.
 
 ## Detección en Android
 
@@ -48,9 +49,23 @@ Los avisos son opt-in y solo funcionan en Android. Al activar el recordatorio, l
 
 El botón de ocultar montos en Inicio cubre el disponible, tarjetas, ingresos adicionales, movimientos recientes, proporciones, déficit y estimación diaria, también en las etiquetas de accesibilidad. La opción se limita a Inicio; las pantallas de edición e historial muestran los datos necesarios para operar.
 
-En **Perfil → Copia de seguridad local** se puede exportar un JSON completo con movimientos, recurrencias, presupuestos, ajustes y recibos de deduplicación. El archivo no está cifrado: se debe elegir una carpeta privada en el dispositivo y custodiarlo. No se sincroniza automáticamente ni se habilita el backup de Android. CSV y PDF son reportes y no pueden restaurarse.
+En **Perfil → Copia de seguridad cifrada** se exporta un archivo `.mbk` con movimientos, recurrencias, presupuestos, ajustes y recibos de deduplicación. El contenido se cifra antes de entregarlo al selector de archivos. La contraseña debe tener al menos 12 caracteres y no se guarda: perderla impide recuperar la copia. El selector puede ofrecer servicios en la nube, por lo que se indica elegir una carpeta del dispositivo. No hay sincronización automática. CSV y PDF son reportes sin cifrar; su exportación requiere autenticación en Android y un aviso explícito.
 
-Restaurar valida formato, versión, enteros, categorías, identificadores y reglas de recurrencia antes de pedir confirmación. Rechaza dos ingresos base en el mismo mes, varias programaciones de salario activas, pendientes que no sean gastos de notificaciones y relaciones de recurrencia incompatibles. Reemplaza la base en una única transacción; ante un error de escritura se revierte íntegramente. Se bloquean las acciones de interfaz durante la operación. Detección, recordatorios y alertas quedan pausados hasta que el usuario los active. Se exporta formato 2 y se aceptan formatos 1 y 2 del esquema 3, hasta 20 MB. El formato 2 evita que versiones anteriores interpreten incorrectamente las nuevas plantillas de recurrencia.
+El sobre binario `MBSAFE01` utiliza AES-256-GCM, nonce de 12 bytes, salt aleatorio de 16 bytes y PBKDF2-HMAC-SHA256 de 600.000 iteraciones. La cabecera está autenticada y los parámetros son fijos para impedir cargas de KDF controladas por el archivo. Una contraseña incorrecta o una modificación del contenido se rechazan antes de restaurar. El límite es de 20 MB de contenido más 56 bytes del sobre. Se aceptan los JSON antiguos de formato 1 y 2 con advertencia explícita sobre su falta de autenticidad; las exportaciones nuevas siempre se cifran.
+
+Al terminar de leer una importación en Android se solicita la limpieza de los archivos temporales privados del selector, incluso si se cancela o falla la lectura. Es una limpieza de mejor esfuerzo; una interrupción del proceso o una falla del sistema puede dejar caché. El archivo original elegido por el usuario no se elimina.
+
+Restaurar valida formato, versión, enteros, categorías, identificadores, fechas y reglas de recurrencia antes de pedir confirmación. Rechaza dos ingresos base en el mismo mes, varias programaciones de salario activas, pendientes que no sean gastos de notificaciones, relaciones incompatibles y expansión excesiva de recurrencias. Reemplaza la base en una única transacción; ante un error de escritura se revierte íntegramente. Se bloquean las acciones de interfaz durante la operación. Detección, recordatorios y alertas quedan pausados hasta que el usuario los active. El JSON interno conserva formato 2 del esquema 3; no cambia el esquema SQL.
+
+## Protección Android y migración
+
+`SecurityGate` impide montar el arranque financiero hasta que Android confirme la identidad. En Android 11 o superior utiliza biometría fuerte o la credencial del dispositivo; en versiones anteriores utiliza PIN, patrón o contraseña del sistema. Cancelar o un error mantiene el bloqueo. Se vuelve a bloquear al pasar a segundo plano y después de cinco minutos sin interacción táctil. Exportar, restaurar y borrar exigen una nueva confirmación de identidad. `FLAG_SECURE`, la ocultación de la vista y la exclusión del foco protegen las pantallas al perder visibilidad. Las alertas de presupuesto usan texto genérico y visibilidad secreta.
+
+La base Android utiliza SQLite3MultipleCiphers con ChaCha20-Poly1305 y una clave aleatoria de 256 bits envuelta con AES-GCM por Android Keystore. El hook de sqlite3 empaqueta la biblioteca de cifrado y verifica los hashes publicados por el paquete. La cola de notificaciones usa otra clave de Keystore y AES-GCM; el identificador del aviso se autentica como AAD. Las entradas antiguas de la cola se cifran en su primera lectura. No se guardan claves en el código, backups ni logs. El bloqueo de interfaz no equivale a exigir autenticación criptográfica por cada acceso a Keystore; un dispositivo o proceso comprometido queda fuera de esta protección.
+
+Al abrir por primera vez, se copia `mi_bolsillo.sqlite` a un archivo temporal privado, se cifra, se verifica su integridad y se vuelve a abrir con la clave. Solo entonces se publica `mi_bolsillo.secure.sqlite` y se limpia el original. La migración admite reintento tras interrupción y nunca reemplaza la información por una base vacía ante una clave incorrecta. Conserva los esquemas históricos para que Drift ejecute después las migraciones habituales. Es necesario disponer de espacio para una copia adicional durante esta operación.
+
+Las conexiones activan `secure_delete` y usan memoria para tablas temporales. La limpieza de archivos anteriores sobrescribe y elimina los archivos privados conocidos; no garantiza eliminación forense en almacenamiento flash. Las copias exportadas deben borrarse por separado. La pérdida de las claves de Android requiere recuperar una copia `.mbk` y su contraseña en una instalación nueva: no existe recuperación remota ni reinicio automático que borre la base inaccesible.
 
 Los cambios de Ajustes se aplican en orden para no sobrescribir preferencias recientes. Si una escritura termina y falla la recarga posterior, la pantalla permite reintentar la lectura sin informar falsamente que el guardado falló.
 
@@ -59,16 +74,16 @@ Los cambios de Ajustes se aplican en orden para no sobrescribir preferencias rec
 ```sh
 dart format .
 flutter analyze
-flutter test
+flutter test --concurrency=2
 flutter build web --no-web-resources-cdn
 ```
 
-GitHub Actions repite formato, análisis, pruebas Flutter, compilación web, pruebas Kotlin y APK debug en cada rama `feature/**` y pull request.
+GitHub Actions repite formato, análisis, pruebas Flutter, compilación web, pruebas Kotlin y APK debug en cada rama `feature/**` y pull request. Las acciones se fijan por SHA verificado, el checkout no conserva credenciales y el wrapper verifica el SHA-256 oficial de Gradle.
 
-Con el SDK Android disponible, ejecuta `gradlew.bat :app:testDebugUnitTest` desde `android` en Windows para las pruebas Kotlin del parser. Comprueba también en un dispositivo el permiso, la llegada de avisos con la app cerrada y la revocación.
+Con el SDK Android disponible, ejecuta `gradlew.bat :app:testDebugUnitTest` desde `android` en Windows para las pruebas Kotlin del parser y del sobre AES-GCM de la cola. Estas últimas prueban alteración, clave incorrecta y sustitución entre registros, pero no sustituyen la validación de Keystore en un dispositivo. Comprueba también el permiso, la llegada de avisos con la app cerrada y la revocación.
 
 Después de modificar las declaraciones de Drift, ejecuta `dart run build_runner build` y añade la migración y su prueba. La suite de Flutter ejercita los repositorios SQLite, las pantallas, la persistencia al reabrir y las migraciones desde esquemas SQL históricos v1 y v2 reales. Incluye restauración con fallo de escritura y rollback, importes pegados, edición de series, cambio de mes, confirmación en lote, permisos pendientes, privacidad y cambios concurrentes de ajustes.
 
-Antes de distribuir una release firmada se debe probar en un teléfono Android la recepción con Flutter cerrado, revocación del permiso, reinicio del dispositivo, selectores de archivos y restauración desde una copia de prueba. Las pruebas Kotlin usan textos sintéticos: no certifican compatibilidad con todos los avisos reales de bancos o billeteras. Hace falta un keystore de producción para firmar la release; no se crea ni incluye uno en el repositorio.
+Las pruebas de seguridad incluyen contraseña incorrecta, alteración y truncado de respaldos, parámetros KDF hostiles, límites de recurrencias, migración cifrada, clave incorrecta, borrado de contenido y bloqueo por cancelación, inactividad y segundo plano. Antes de distribuir una release firmada se debe probar en un teléfono Android la autenticación real, Keystore, bloqueo en aplicaciones recientes, recepción con Flutter cerrado, revocación del permiso, reinicio, selectores de archivos y restauración desde una copia de prueba. Las pruebas Kotlin del parser usan textos sintéticos: no certifican compatibilidad con todos los avisos reales. Hace falta un keystore de producción para firmar la release; no se crea ni incluye uno en el repositorio.
 
 Los recursos web `drift_worker.js` y `sqlite3.wasm` son los binarios de la release de Drift 2.35.4, compatibles con sqlite3 3.9.2. Se empaquetan con el proyecto. Al actualizar Drift, sustituye ambos por los recursos compatibles y comprueba sus sumas SHA-256.
